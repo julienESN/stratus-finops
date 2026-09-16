@@ -1,45 +1,74 @@
-# Stratus — GCP FinOps
+# Stratus, boîte à outils FinOps
 
-Application de démonstration de Julien Esnault. Toutes les données sont synthétiques. Aucune donnée d’entreprise, clé cloud ou connexion GCP n’est embarquée.
+Démonstrateur et boîte à outils de consultant de Julien Esnault, alignés sur FOCUS et sur le framework FinOps 2026. Toutes les données sont synthétiques. Aucune donnée d’entreprise, clé cloud ou connexion n’est embarquée.
 
-## Démonstration en cinq minutes
+Version en ligne : https://julienesn.github.io/stratus-finops/
 
-1. **Vue d’ensemble** : 87 657,42 € du 1 au 15 septembre, une projection au-dessus du budget et une dérive BigQuery. Comparer les périodes et filtrer par équipe.
-2. **Optimisations** : examiner la dérive, expliquer la partition, les contrôles de résultats et la mesure après action. Valider avec un commentaire. Les 8 100 €/mois sont un potentiel illustratif, jamais un gain réalisé.
-3. **Allocation** : montrer le coût sans responsable. Attribuer Sandbox R&D, comparer les clés de partage et exporter le showback ou le brouillon de chargeback. Le total est rapproché au centime.
-4. **Simulateur CUD** : comparer usage stable et usage à 40 %. Une dépense engagée reste due même si elle n’est pas consommée. Ce modèle pédagogique n’est pas un calculateur de prix contractuel.
-5. **Méthode & données** : expliquer la source simulée, les limites, les formules et les étapes d’intégration d’un véritable export Cloud Billing.
+## Quatre sections
 
-Les décisions et affectations restent dans sessionStorage, pour l’onglet courant. Le bouton Réinitialiser la démo restaure les valeurs initiales. Les modifications ne sont pas partagées entre appareils.
+1. **Démonstration** : un parcours de 5 minutes sur des coûts Google Cloud fictifs au format FOCUS 1.2.
+   - *Vue d’ensemble* : projection de fin de mois au-dessus du budget et dérive BigQuery.
+   - *Optimisations* : pistes chiffrées, décisions motivées et journal exportable.
+   - *Allocation* : coût sans propriétaire, clé de partage et rapprochement au centime.
+   - *Simulateur CUD* : gain d’un engagement et risque d’une baisse d’usage.
+   - *Méthode* : règles de calcul et passage à un export réel.
+2. **Situations** : 12 cas rencontrés en arrivant chez un client (facture qui grimpe, coûts sans propriétaire, engagement sous-utilisé, hors-prod allumée…). Chaque fiche donne les signaux, les requêtes, les actions, les KPI et le piège fréquent.
+3. **Labo SQL** : 18 requêtes FOCUS, un générateur, des favoris et l’exécution dans le navigateur avec DuckDB-WASM.
+   - **DuckDB, FOCUS standard** : s’exécute ici, et tel quel avec DuckDB sur un export FOCUS AWS, Azure ou la démo.
+   - **BigQuery, export Google Cloud** : adapté aux écarts de l’export FOCUS de Google Cloud (labels dans `x_Labels`, remises CUD dans `x_Credits`, pas de `Tags` ni de colonnes `CommitmentDiscount*`).
+   - **Charger un fichier FOCUS** (CSV ou Parquet) : le fichier est lu dans le navigateur, rien n’est envoyé.
+4. **Référentiel** : framework FinOps (principes, personas, phases, domaines et capacités), FOCUS (les quatre coûts, anatomie d’une ligne sur des données réelles de la démo, règles, colonnes, exports par fournisseur, versions 1.0 à 1.4) et KPI avec leurs formules en colonnes FOCUS.
+
+## Données de démonstration
+
+`dist/data.js` génère 2 210 lignes FOCUS 1.2 quotidiennes pour août et le 1er au 15 septembre 2026 :
+
+- usage à la demande (les quatre coûts sont égaux) et crédit promotionnel de 2 % en lignes `Credit` ;
+- un CUD flexible de 1 900 € d’équivalent à la demande par jour, remise de 28 %, porté par le socle partagé : frais en `Purchase` (`EffectiveCost` = 0), usage couvert en `Used`, reliquat en `Unused` le week-end ;
+- tags `team`, `env`, `app` ; la Sandbox R&D n’a pas de `team` ;
+- dérive BigQuery à partir du 11 septembre, croissance du stockage de Nova Intelligence, egress réseau d’Orion Platform.
+
+La démo agrège l’`EffectiveCost` par jour, projet et service. L’export « au format FOCUS » de la vue d’ensemble produit un CSV rechargeable dans le Labo SQL ou dans DuckDB.
 
 ## Exécuter localement
 
-Aucune dépendance à installer. Servir le dossier `dist` avec un serveur HTTP statique, par exemple :
+Servir le dossier `dist` avec un serveur HTTP statique :
 
 ```sh
 python3 -m http.server 4173 --directory dist
 ```
 
-Ouvrir http://localhost:4173. Le chargement direct de index.html via file:// n’est pas pris en charge car le code utilise des modules JavaScript.
+Ouvrir http://localhost:4173. Le chargement direct de `index.html` via `file://` n’est pas pris en charge (modules JavaScript).
 
-Les polices utilisent Google Fonts et possèdent une police de secours locale. Aucun appel externe n’est nécessaire aux calculs.
+Le moteur SQL (DuckDB-WASM 1.32.0, environ 7 Mo) et les polices IBM Plex sont chargés depuis jsDelivr et Google Fonts. Le reste de l’application fonctionne sans le moteur SQL : les requêtes restent copiables.
 
 ## Vérifications
 
+Le workflow `.github/workflows/pages.yml` lance les tests à chaque push sur `main` et ne publie le site que s’ils passent.
+
 ```sh
-node --test tests/finance.test.js
+npm install
+npm test
 ```
 
-Les tests vérifient la reproductibilité des données, le rapprochement des coûts et crédits, les deux clés d’allocation avec et sans propriétaire, le traitement du socle sans base de répartition et les scénarios de sous-utilisation des engagements.
+- `tests/finance.test.js` : valeurs autorisées FOCUS, règles de coût (crédits, achats, `Used`, `Unused`), égalité quotidienne `BilledCost` = `EffectiveCost`, allocation au centime, modèle du simulateur.
+- `tests/sql.test.js` : chaque requête DuckDB de la bibliothèque et chaque option du générateur s’exécute sur la démo avec `@duckdb/node-api`. Les résultats clés sont contrôlés : dérive détectée le 11 septembre, Sandbox seule sans équipe, projection identique à la vue d’ensemble, décomposition des économies qui retombe sur le coût effectif.
 
 ## Structure
 
-- `dist/data.js` : données reproductibles, coûts en centimes, allocation au plus fort reste, modèle CUD.
-- `dist/app.js` : vues interactives, journal de décisions, exports CSV et JSON.
-- `dist/styles.css` : interface responsive et états accessibles.
-- `tests/finance.test.js` : invariants financiers.
-- `.openai/hosting.json` : identité du site et répertoire statique.
+- `dist/app.js` : navigation (`#section/détail`), en-tête et délégation des clics.
+- `dist/state.js`, `dist/ui.js`, `dist/charts.js` : état et session, primitives d’interface, graphiques SVG.
+- `dist/data.js`, `dist/focus.js` : données FOCUS, agrégation, allocation, modèle CUD, export CSV et table DuckDB.
+- `dist/sql.js` : générateur de requêtes, chargement de DuckDB-WASM, exécution et import de fichier.
+- `dist/views/` : `demo.js`, `situations.js`, `lab.js`, `reference.js`.
+- `dist/content/` : `snippets.js`, `situations.js`, `reference.js` (contenu seul).
+- `dist/styles.css` : interface sobre, police IBM Plex Sans et Plex Mono, une seule couleur d’accent, totaux soulignés d’un double filet.
+- `docs/superpowers/specs/` : spécification de la boîte à outils.
 
 ## Limites assumées
 
-Le CSV propose un extrait de champs alignés sur FOCUS. Il ne constitue pas un export FOCUS complet, validé ou certifié. Le prototype ne possède pas de backend de facturation, d’intégration comptable, de contrôles de conformité ou de connecteur cloud actif. Le modèle CUD exclut notamment les variations horaires, les conditions SKU, l’amortissement et les remises existantes. Les recommandations sont des scénarios explicitement documentés, pas des détections automatiques. L’arrêt de préproduction illustre la sobriété des usages ; aucun gain carbone non mesuré n’est annoncé.
+- Les requêtes BigQuery ne sont pas exécutées par les tests : elles suivent le schéma documenté par Google pour l’export FOCUS (preview) et doivent être validées sur un mois connu chez le client.
+- S3NS et les clouds de confiance : vérifier sur place la disponibilité et le format de l’export de facturation.
+- Pas de backend, de connecteur BigQuery direct, d’authentification ni d’intégration comptable. Les recommandations de la démo sont des scénarios documentés, pas des détections automatiques.
+- Le simulateur CUD est un modèle pédagogique (sans granularité horaire, conditions SKU ni remises existantes), pas un calculateur contractuel.
+- Décisions de la démo en `sessionStorage` (onglet courant) ; favoris du Labo en `localStorage` (navigateur courant).
