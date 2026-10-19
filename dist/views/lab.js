@@ -6,8 +6,11 @@ import { toFocusCsv, CORE_COLUMNS, FOCUS_VERSION } from '../focus.js';
 import { GENERATOR, GENERATOR_DEFAULTS, generateSql, loadEngine, runQuery, importFocusFile, restoreDemoTable } from '../sql.js';
 import { state, rerender } from '../state.js';
 import { $, esc, rich, icon, pageHead, selectField, toast, download, copyText, capabilityLink } from '../ui.js';
+import { t, pick, lang, locale } from '../i18n.js';
 
 const FAVORITES_KEY = 'stratus-lab-favoris-v1';
+
+const DEMO_SOURCE_NAME = { fr: 'Démo Stratus', en: 'Stratus demo' };
 
 const lab = {
   dialect: 'duckdb',
@@ -15,11 +18,17 @@ const lab = {
   generator: { ...GENERATOR_DEFAULTS },
   drafts: {},
   engine: 'idle',
-  source: { kind: 'demo', name: 'Démo Stratus', rows: focusRows.length },
+  source: { kind: 'demo', name: DEMO_SOURCE_NAME, rows: focusRows.length },
   output: null,
   runNext: false,
   saving: false,
 };
+
+// Options de liste avec libellés bilingues résolus dans la langue courante.
+const options = (list) => list.map(([value, text]) => [value, pick(text)]);
+
+// Accord du mot « ligne » : en français, 0 et 1 prennent le singulier ; en anglais, seul 1.
+const isSingular = (n) => (lang() === 'en' ? n === 1 : n <= 1);
 
 /* ---------- Favoris (navigateur local) ---------- */
 
@@ -41,7 +50,7 @@ function storeFavorites() {
   try {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
   } catch {
-    toast('Favoris non enregistrés : le stockage du navigateur est indisponible.');
+    toast(t('lab.favoritesNotSaved'));
   }
 }
 
@@ -52,15 +61,18 @@ function current() {
   if (id === 'generator') {
     return {
       key: 'generator',
-      title: 'Générateur de requête',
-      question: 'Composer une agrégation FOCUS sans écrire de SQL.',
+      title: t('lab.generatorName'),
+      question: { fr: 'Composer une agrégation FOCUS sans écrire de SQL.', en: 'Build a FOCUS aggregation without writing SQL.' },
       duckdb: generateSql(lab.generator, 'duckdb'),
       bigquery: generateSql(lab.generator, 'bigquery'),
-      reading: 'EffectiveCost pour piloter et allouer, BilledCost pour rapprocher la facture. Le SQL généré peut être modifié puis enregistré en favori.',
+      reading: {
+        fr: 'EffectiveCost pour piloter et allouer, BilledCost pour rapprocher la facture. Le SQL généré peut être modifié puis enregistré en favori.',
+        en: 'EffectiveCost to steer and allocate, BilledCost to reconcile the invoice. The generated SQL can be edited, then saved as a favorite.',
+      },
     };
   }
   const saved = favorites.saved.find((f) => f.id === id);
-  if (saved) return { key: saved.id, custom: true, ...saved, question: 'Requête enregistrée dans ce navigateur.' };
+  if (saved) return { key: saved.id, custom: true, ...saved, question: t('lab.savedQuestion') };
   const snippet = snippetById[id] || snippets[0];
   return { key: snippet.id, ...snippet };
 }
@@ -76,20 +88,20 @@ function sourceBar() {
   return `
     <div class="lab-source" id="lab-source">
       <p>
-        <span class="source-label">Données interrogées</span>
-        <strong>${esc(lab.source.name)}</strong>
-        <span>${lab.source.kind === 'demo' ? `FOCUS ${FOCUS_VERSION}, ` : ''}${lab.source.rows.toLocaleString('fr-FR')} lignes, table <code>focus</code></span>
+        <span class="source-label">${t('lab.dataQueried')}</span>
+        <strong>${esc(pick(lab.source.name))}</strong>
+        <span>${lab.source.kind === 'demo' ? `FOCUS ${FOCUS_VERSION}, ` : ''}${t('lab.rowsTable', { n: lab.source.rows.toLocaleString(locale()) })} <code>focus</code></span>
       </p>
       <div class="source-actions">
         <label class="btn btn-small file-button ${loading ? 'is-disabled' : ''}">
-          ${icon('upload')}Charger un fichier FOCUS
+          ${icon('upload')}${t('lab.loadFile')}
           <input id="lab-file" type="file" accept=".csv,.parquet" class="sr-only" ${loading ? 'disabled' : ''}>
         </label>
-        ${lab.source.kind === 'file' ? '<button class="btn btn-small" data-lab="demo">Revenir à la démo</button>' : ''}
-        <button class="btn btn-small" data-lab="download-demo">${icon('download')}Télécharger la démo</button>
+        ${lab.source.kind === 'file' ? `<button class="btn btn-small" data-lab="demo">${t('lab.backToDemo')}</button>` : ''}
+        <button class="btn btn-small" data-lab="download-demo">${icon('download')}${t('lab.downloadDemo')}</button>
       </div>
-      ${lab.source.missing?.length ? `<p class="source-warning">${icon('alert')}Colonnes FOCUS absentes du fichier : ${lab.source.missing.map((c) => `<code>${c}</code>`).join(', ')}. Les requêtes qui les utilisent échoueront.</p>` : ''}
-      <p class="source-note">Le fichier est lu dans ce navigateur par DuckDB-WASM : aucune donnée n’est envoyée.</p>
+      ${lab.source.missing?.length ? `<p class="source-warning">${icon('alert')}${t('lab.missingColumns', { columns: lab.source.missing.map((c) => `<code>${c}</code>`).join(', ') })}</p>` : ''}
+      <p class="source-note">${pick({ fr: 'Le fichier est lu dans ce navigateur par DuckDB-WASM : aucune donnée n’est envoyée.', en: 'The file is read in this browser by DuckDB-WASM: no data is sent.' })}</p>
     </div>`;
 }
 
@@ -105,43 +117,43 @@ function libraryItem(id, title, subtitle, active) {
 
 function library(item) {
   const words = lab.filter.toLowerCase().split(/\s+/).filter(Boolean);
-  const visible = snippets.filter((s) => words.every((w) => `${s.title} ${s.question} ${s.capability} ${s.duckdb}`.toLowerCase().includes(w)));
-  const groups = [...new Set(visible.map((s) => s.capability))];
+  const visible = snippets.filter((s) => words.every((w) => `${pick(s.title)} ${pick(s.question)} ${pick(s.capability)} ${s.duckdb}`.toLowerCase().includes(w)));
+  const groups = [...new Set(visible.map((s) => pick(s.capability)))];
   const starred = favorites.starred.map((id) => snippetById[id]);
 
   const picker = `
     <label class="field compact-picker">
-      <span class="field-label">Requête</span>
+      <span class="field-label">${t('lab.query')}</span>
       <select id="lab-picker">
-        <option value="generator" ${item.key === 'generator' ? 'selected' : ''}>Générateur de requête</option>
-        ${favorites.saved.length ? `<optgroup label="Mes requêtes">${favorites.saved.map((f) => `<option value="${esc(f.id)}" ${item.key === f.id ? 'selected' : ''}>${esc(f.title)}</option>`).join('')}</optgroup>` : ''}
-        ${[...new Set(snippets.map((s) => s.capability))].map((g) => `
+        <option value="generator" ${item.key === 'generator' ? 'selected' : ''}>${t('lab.generatorName')}</option>
+        ${favorites.saved.length ? `<optgroup label="${t('lab.myQueries')}">${favorites.saved.map((f) => `<option value="${esc(f.id)}" ${item.key === f.id ? 'selected' : ''}>${esc(f.title)}</option>`).join('')}</optgroup>` : ''}
+        ${[...new Set(snippets.map((s) => pick(s.capability)))].map((g) => `
           <optgroup label="${esc(g)}">
-            ${snippets.filter((s) => s.capability === g).map((s) => `<option value="${s.id}" ${item.key === s.id ? 'selected' : ''}>${favorites.starred.includes(s.id) ? '★ ' : ''}${esc(s.title)}</option>`).join('')}
+            ${snippets.filter((s) => pick(s.capability) === g).map((s) => `<option value="${s.id}" ${item.key === s.id ? 'selected' : ''}>${favorites.starred.includes(s.id) ? '★ ' : ''}${esc(pick(s.title))}</option>`).join('')}
           </optgroup>`).join('')}
       </select>
     </label>`;
 
   return picker + `
-    <nav class="master lab-library" aria-label="Bibliothèque de requêtes">
+    <nav class="master lab-library" aria-label="${t('lab.libraryLabel')}">
       <label class="field">
-        <span class="field-label">Filtrer les requêtes</span>
-        <input id="lab-filter" type="search" value="${esc(lab.filter)}" placeholder="Ex. engagement, Tags, BigQuery" autocomplete="off">
+        <span class="field-label">${t('lab.filterQueries')}</span>
+        <input id="lab-filter" type="search" value="${esc(lab.filter)}" placeholder="${t('lab.filterPlaceholder')}" autocomplete="off">
       </label>
       <ul class="master-list">
-        ${libraryItem('generator', 'Générateur de requête', 'Mesure, regroupement, période', item.key === 'generator')}
+        ${libraryItem('generator', t('lab.generatorName'), t('lab.generatorHint'), item.key === 'generator')}
       </ul>
-      <h2 class="master-heading">Mes favoris</h2>
+      <h2 class="master-heading">${t('lab.myFavorites')}</h2>
       ${starred.length || favorites.saved.length ? `<ul class="master-list">
-        ${starred.map((s) => libraryItem(s.id, s.title, s.capability, item.key === s.id)).join('')}
-        ${favorites.saved.map((f) => libraryItem(f.id, f.title, 'Requête enregistrée', item.key === f.id)).join('')}
-      </ul>` : '<p class="empty empty-small">Ajoutez une étoile à une requête ou enregistrez la vôtre.</p>'}
+        ${starred.map((s) => libraryItem(s.id, pick(s.title), pick(s.capability), item.key === s.id)).join('')}
+        ${favorites.saved.map((f) => libraryItem(f.id, f.title, t('lab.savedQuery'), item.key === f.id)).join('')}
+      </ul>` : `<p class="empty empty-small">${t('lab.emptyFavorites')}</p>`}
       ${groups.map((g) => `
         <h2 class="master-heading">${esc(g)}</h2>
         <ul class="master-list">
-          ${visible.filter((s) => s.capability === g).map((s) => libraryItem(s.id, s.title, '', item.key === s.id)).join('')}
+          ${visible.filter((s) => pick(s.capability) === g).map((s) => libraryItem(s.id, pick(s.title), '', item.key === s.id)).join('')}
         </ul>`).join('')}
-      ${visible.length ? '' : '<p class="empty empty-small">Aucune requête ne correspond au filtre.</p>'}
+      ${visible.length ? '' : `<p class="empty empty-small">${t('lab.noMatch')}</p>`}
     </nav>`;
 }
 
@@ -149,12 +161,12 @@ function generatorForm() {
   const g = lab.generator;
   return `
     <div class="generator">
-      ${selectField('gen-measure', 'Mesure', GENERATOR.measures, g.measure)}
-      ${selectField('gen-dimension', 'Regrouper par', GENERATOR.dimensions, g.dimension)}
-      ${selectField('gen-dimension2', 'Puis par', [['none', 'Aucun'], ...GENERATOR.dimensions], g.dimension2)}
-      ${selectField('gen-period', 'Période', GENERATOR.periods, g.period)}
-      ${selectField('gen-charge', 'Charges', GENERATOR.charges, g.charge)}
-      ${selectField('gen-limit', 'Lignes', GENERATOR.limits.map((n) => [n, `${n} lignes`]), g.limit)}
+      ${selectField('gen-measure', t('lab.measure'), options(GENERATOR.measures), g.measure)}
+      ${selectField('gen-dimension', t('lab.groupBy'), options(GENERATOR.dimensions), g.dimension)}
+      ${selectField('gen-dimension2', t('lab.thenBy'), [['none', t('lab.none')], ...options(GENERATOR.dimensions)], g.dimension2)}
+      ${selectField('gen-period', t('lab.period'), options(GENERATOR.periods), g.period)}
+      ${selectField('gen-charge', t('lab.charges'), options(GENERATOR.charges), g.charge)}
+      ${selectField('gen-limit', t('lab.rowsLimit'), GENERATOR.limits.map((n) => [n, t('lab.limitRows', { n })]), g.limit)}
     </div>`;
 }
 
@@ -166,48 +178,48 @@ function editor(item) {
     <section class="lab-main" aria-labelledby="lab-title">
       <div class="lab-head">
         <div>
-          <h2 id="lab-title">${esc(item.title)}</h2>
-          <p class="lab-question">${esc(item.question)}</p>
-          ${item.capability ? `<p class="capabilities">Capacité FinOps : ${capabilityLink(item.capability)}</p>` : ''}
+          <h2 id="lab-title">${esc(pick(item.title))}</h2>
+          <p class="lab-question">${esc(pick(item.question))}</p>
+          ${item.capability ? `<p class="capabilities">${t('lab.capabilities')}${capabilityLink(pick(item.capability))}</p>` : ''}
         </div>
         ${item.custom
-          ? `<button class="btn btn-small" data-lab="delete-favorite">Supprimer ce favori</button>`
-          : item.key !== 'generator' ? `<button class="btn btn-small star-button" data-lab="star" aria-pressed="${starred}">${icon('star')}${starred ? 'Dans mes favoris' : 'Ajouter aux favoris'}</button>` : ''}
+          ? `<button class="btn btn-small" data-lab="delete-favorite">${t('lab.deleteFavorite')}</button>`
+          : item.key !== 'generator' ? `<button class="btn btn-small star-button" data-lab="star" aria-pressed="${starred}">${icon('star')}${starred ? t('lab.inFavorites') : t('lab.addFavorite')}</button>` : ''}
       </div>
 
       ${item.key === 'generator' ? generatorForm() : ''}
 
-      <div class="segmented" role="radiogroup" aria-label="Dialecte SQL">
-        <button role="radio" aria-checked="${lab.dialect === 'duckdb'}" data-dialect="duckdb">DuckDB, FOCUS standard</button>
-        <button role="radio" aria-checked="${lab.dialect === 'bigquery'}" data-dialect="bigquery">BigQuery, export Google Cloud</button>
+      <div class="segmented" role="radiogroup" aria-label="${t('lab.dialectLabel')}">
+        <button role="radio" aria-checked="${lab.dialect === 'duckdb'}" data-dialect="duckdb">${t('lab.dialectDuckdb')}</button>
+        <button role="radio" aria-checked="${lab.dialect === 'bigquery'}" data-dialect="bigquery">${t('lab.dialectBigquery')}</button>
       </div>
       <p class="dialect-note">${lab.dialect === 'duckdb'
-        ? 'S’exécute ici sur la table <code>focus</code>, et tel quel avec DuckDB sur un export FOCUS AWS, Azure ou la démo.'
-        : rich(item.bigqueryNote || 'À lancer dans la console BigQuery du client, sur la table de l’export FOCUS Google Cloud.')}</p>
+        ? pick({ fr: 'S’exécute ici sur la table <code>focus</code>, et tel quel avec DuckDB sur un export FOCUS AWS, Azure ou la démo.', en: 'Runs here on the <code>focus</code> table, and unchanged with DuckDB on an AWS or Azure FOCUS export, or on the demo.' })
+        : rich(pick(item.bigqueryNote) || pick({ fr: 'À lancer dans la console BigQuery du client, sur la table de l’export FOCUS Google Cloud.', en: 'Run it in the client’s BigQuery console, on the Google Cloud FOCUS export table.' }))}</p>
 
-      <label class="sr-only" for="lab-sql">Requête SQL</label>
+      <label class="sr-only" for="lab-sql">${t('lab.sqlQuery')}</label>
       <textarea id="lab-sql" class="sql-editor" spellcheck="false" autocapitalize="off" autocomplete="off" rows="${Math.min(26, Math.max(8, sqlOf(item).split('\n').length + 1))}">${esc(sqlOf(item))}</textarea>
 
       <div class="lab-actions">
-        ${runnable ? `<button class="btn btn-primary" data-lab="run" ${lab.engine === 'loading' ? 'disabled' : ''}>${icon('play')}Exécuter</button><span class="shortcut">Ctrl ou ⌘ + Entrée</span>` : ''}
-        <button class="btn" data-lab="copy">${icon('copy')}Copier</button>
-        <button class="btn" data-lab="save">Enregistrer comme favori</button>
-        ${edited ? '<button class="btn" data-lab="revert">Rétablir la requête d’origine</button>' : ''}
+        ${runnable ? `<button class="btn btn-primary" data-lab="run" ${lab.engine === 'loading' ? 'disabled' : ''}>${icon('play')}${t('lab.run')}</button><span class="shortcut">${t('lab.shortcut')}</span>` : ''}
+        <button class="btn" data-lab="copy">${icon('copy')}${t('lab.copy')}</button>
+        <button class="btn" data-lab="save">${t('lab.saveFavorite')}</button>
+        ${edited ? `<button class="btn" data-lab="revert">${t('lab.revert')}</button>` : ''}
       </div>
 
       ${lab.saving ? `
         <form class="save-form" id="lab-save-form">
           <label class="field field-grow">
-            <span class="field-label">Nom du favori</span>
-            <input id="lab-save-name" type="text" maxlength="80" required value="${esc(item.custom ? item.title : `${item.title} (ma version)`)}">
+            <span class="field-label">${t('lab.favoriteName')}</span>
+            <input id="lab-save-name" type="text" maxlength="80" required value="${esc(item.custom ? pick(item.title) : t('lab.myVersion', { title: pick(item.title) }))}">
           </label>
-          <button class="btn btn-primary" type="submit">Enregistrer</button>
-          <button class="btn" type="button" data-lab="cancel-save">Annuler</button>
+          <button class="btn btn-primary" type="submit">${t('lab.save')}</button>
+          <button class="btn" type="button" data-lab="cancel-save">${t('lab.cancel')}</button>
         </form>` : ''}
 
       <div class="lab-reading">
-        <h3>Comment lire le résultat</h3>
-        <p>${rich(item.reading)}</p>
+        <h3>${t('lab.howToRead')}</h3>
+        <p>${rich(pick(item.reading))}</p>
       </div>
 
       <div id="lab-results" class="lab-results" aria-live="polite">${results()}</div>
@@ -216,26 +228,26 @@ function editor(item) {
 
 const formatValue = (value, numeric) => {
   if (value === null || value === undefined) return '<span class="null">null</span>';
-  if (numeric && typeof value === 'number') return value.toLocaleString('fr-FR', Number.isInteger(value) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  if (numeric && typeof value === 'number') return value.toLocaleString(locale(), Number.isInteger(value) ? {} : { minimumFractionDigits: 2, maximumFractionDigits: 3 });
   return esc(value);
 };
 
 function results() {
   const o = lab.output;
-  if (lab.engine === 'loading') return '<p class="lab-status">Chargement du moteur SQL DuckDB-WASM (environ 7 Mo, une seule fois)…</p>';
-  if (!o) return lab.dialect === 'duckdb' ? '<p class="lab-status">Exécutez la requête pour voir le résultat ici.</p>' : '';
+  if (lab.engine === 'loading') return `<p class="lab-status">${t('lab.loadingEngine')}</p>`;
+  if (!o) return lab.dialect === 'duckdb' ? `<p class="lab-status">${t('lab.runToSee')}</p>` : '';
   if (o.error) {
     return `
       <div class="notice notice-critical">
         ${icon('alert')}
-        <p><strong>${o.engineError ? 'Le moteur SQL n’a pas pu être chargé.' : 'La requête a échoué.'}</strong> ${esc(o.error)}</p>
+        <p><strong>${o.engineError ? t('lab.engineFailed') : t('lab.queryFailed')}</strong> ${esc(o.error)}</p>
       </div>
-      ${o.engineError ? '<p class="lab-status">Vérifiez l’accès à cdn.jsdelivr.net. La requête reste copiable pour DuckDB ou BigQuery.</p>' : ''}`;
+      ${o.engineError ? `<p class="lab-status">${pick({ fr: 'Vérifiez l’accès à cdn.jsdelivr.net. La requête reste copiable pour DuckDB ou BigQuery.', en: 'Check access to cdn.jsdelivr.net. The query can still be copied for DuckDB or BigQuery.' })}</p>` : ''}`;
   }
   return `
     <div class="results-head">
-      <p class="lab-status">${o.total.toLocaleString('fr-FR')} ligne${o.total > 1 ? 's' : ''} en ${o.ms} ms${o.total > o.rows.length ? `, ${o.rows.length} affichées` : ''}</p>
-      ${o.rows.length ? '<button class="btn btn-small" data-lab="export-result">' + icon('download') + 'Exporter le résultat</button>' : ''}
+      <p class="lab-status">${t(isSingular(o.total) ? 'lab.resultOne' : 'lab.resultMany', { n: o.total.toLocaleString(locale()), ms: o.ms })}${o.total > o.rows.length ? t('lab.shown', { n: o.rows.length }) : ''}</p>
+      ${o.rows.length ? `<button class="btn btn-small" data-lab="export-result">${icon('download')}${t('lab.exportResult')}</button>` : ''}
     </div>
     ${o.rows.length ? `
     <div class="table-wrap results-table">
@@ -243,7 +255,7 @@ function results() {
         <thead><tr>${o.columns.map((c) => `<th scope="col" class="${c.numeric ? 'num' : ''}"><code>${esc(c.name)}</code></th>`).join('')}</tr></thead>
         <tbody>${o.rows.map((row) => `<tr>${row.map((v, i) => `<td class="${o.columns[i].numeric ? 'num' : ''}">${formatValue(v, o.columns[i].numeric)}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
-    </div>` : '<p class="empty">La requête ne renvoie aucune ligne.</p>'}`;
+    </div>` : `<p class="empty">${t('lab.noRows')}</p>`}`;
 }
 
 export function renderLab() {
@@ -254,8 +266,8 @@ export function renderLab() {
     lab.lastKey = item.key;
   }
   return pageHead(
-    'Labo SQL',
-    'Requêtes FOCUS prêtes à l’emploi : exécutez-les ici sur la démo ou sur un export local, copiez-les pour BigQuery.',
+    t('lab.title'),
+    pick({ fr: 'Requêtes FOCUS prêtes à l’emploi : exécutez-les ici sur la démo ou sur un export local, copiez-les pour BigQuery.', en: 'Ready-to-use FOCUS queries: run them here on the demo or on a local export, or copy them for BigQuery.' }),
   ) + sourceBar() + `<div class="master-detail lab">${library(item)}${editor(item)}</div>`;
 }
 
@@ -310,9 +322,9 @@ async function loadFile(file) {
       missing: CORE_COLUMNS.filter((c) => !lower.includes(c.toLowerCase())),
     };
     lab.output = null;
-    toast(`${imported.rows.toLocaleString('fr-FR')} lignes chargées depuis ${imported.name}.`);
+    toast(t('lab.rowsLoaded', { n: imported.rows.toLocaleString(locale()), name: imported.name }));
   } catch (error) {
-    toast(`Import impossible : ${message(error)}`);
+    toast(t('lab.importFailed', { error: message(error) }));
   }
   rerender();
 }
@@ -362,7 +374,7 @@ export function bindLab() {
     lab.saving = false;
     delete lab.drafts[`${item.key}:duckdb`];
     delete lab.drafts[`${item.key}:bigquery`];
-    toast(`Favori « ${title} » enregistré dans ce navigateur.`);
+    toast(t('lab.favoriteSaved', { title }));
     location.hash = `lab/${favorite.id}`;
   });
 
@@ -388,7 +400,7 @@ export function handleLabClick(target) {
       run();
       break;
     case 'copy':
-      copyText($('#lab-sql').value).then((ok) => toast(ok ? 'Requête copiée.' : 'Copie impossible : sélectionnez le texte manuellement.'));
+      copyText($('#lab-sql').value).then((ok) => toast(ok ? t('lab.copied') : t('lab.copyFailed')));
       break;
     case 'star':
       favorites.starred = favorites.starred.includes(item.key)
@@ -413,7 +425,7 @@ export function handleLabClick(target) {
     case 'delete-favorite':
       favorites.saved = favorites.saved.filter((f) => f.id !== item.key);
       storeFavorites();
-      toast(`Favori « ${item.title} » supprimé.`);
+      toast(t('lab.favoriteDeleted', { title: pick(item.title) }));
       location.hash = 'lab/generator';
       break;
     case 'export-result':
@@ -421,14 +433,14 @@ export function handleLabClick(target) {
       break;
     case 'download-demo':
       download(`stratus-demo-focus-${FOCUS_VERSION}.csv`, toFocusCsv(focusRows));
-      toast('Démo exportée au format FOCUS : rechargeable ici ou dans DuckDB.');
+      toast(t('lab.demoExported'));
       break;
     case 'demo':
       restoreDemoTable().then(() => {
-        lab.source = { kind: 'demo', name: 'Démo Stratus', rows: focusRows.length };
+        lab.source = { kind: 'demo', name: DEMO_SOURCE_NAME, rows: focusRows.length };
         lab.output = null;
         rerender();
-        toast('Retour aux données de démonstration.');
+        toast(t('lab.demoRestored'));
       });
       break;
   }

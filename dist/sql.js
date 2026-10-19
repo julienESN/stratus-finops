@@ -5,33 +5,34 @@ import { BQ_TABLE } from './content/snippets.js';
 
 /* ---------- Générateur ---------- */
 
+// Libellés bilingues pour l'affichage. Les clés (valeurs SQL) ne changent jamais.
 export const GENERATOR = {
   measures: [
-    ['EffectiveCost', 'EffectiveCost, coût amorti (allocation, suivi)'],
-    ['BilledCost', 'BilledCost, coût facturé (rapprochement facture)'],
-    ['ListCost', 'ListCost, prix public (mesure des remises)'],
-    ['ContractedCost', 'ContractedCost, après remises négociées'],
+    ['EffectiveCost', { fr: 'EffectiveCost, coût amorti (allocation, suivi)', en: 'EffectiveCost, effective cost (allocation, tracking)' }],
+    ['BilledCost', { fr: 'BilledCost, coût facturé (rapprochement facture)', en: 'BilledCost, billed cost (invoice reconciliation)' }],
+    ['ListCost', { fr: 'ListCost, prix public (mesure des remises)', en: 'ListCost, list price (measures discounts)' }],
+    ['ContractedCost', { fr: 'ContractedCost, après remises négociées', en: 'ContractedCost, after negotiated discounts' }],
   ],
   dimensions: [
-    ['ServiceName', 'Service'],
-    ['ServiceCategory', 'Catégorie de service'],
-    ['SubAccountName', 'Projet ou compte'],
-    ['RegionName', 'Région'],
-    ['ChargeCategory', 'Catégorie de charge'],
-    ['PricingCategory', 'Catégorie de prix'],
-    ['tag:team', 'Tag team'],
-    ['tag:env', 'Tag env'],
-    ['day', 'Jour'],
-    ['month', 'Mois'],
+    ['ServiceName', { fr: 'Service', en: 'Service' }],
+    ['ServiceCategory', { fr: 'Catégorie de service', en: 'Service category' }],
+    ['SubAccountName', { fr: 'Projet ou compte', en: 'Project or account' }],
+    ['RegionName', { fr: 'Région', en: 'Region' }],
+    ['ChargeCategory', { fr: 'Catégorie de charge', en: 'Charge category' }],
+    ['PricingCategory', { fr: 'Catégorie de prix', en: 'Pricing category' }],
+    ['tag:team', { fr: 'Tag team', en: 'Tag team' }],
+    ['tag:env', { fr: 'Tag env', en: 'Tag env' }],
+    ['day', { fr: 'Jour', en: 'Day' }],
+    ['month', { fr: 'Mois', en: 'Month' }],
   ],
   periods: [
-    ['latest-month', 'Dernier mois de facturation'],
-    ['last-30-days', '30 derniers jours'],
-    ['all', 'Toute la période'],
+    ['latest-month', { fr: 'Dernier mois de facturation', en: 'Latest billing month' }],
+    ['last-30-days', { fr: '30 derniers jours', en: 'Last 30 days' }],
+    ['all', { fr: 'Toute la période', en: 'Entire period' }],
   ],
   charges: [
-    ['all', 'Toutes les charges'],
-    ['Usage', 'Usage uniquement'],
+    ['all', { fr: 'Toutes les charges', en: 'All charges' }],
+    ['Usage', { fr: 'Usage uniquement', en: 'Usage only' }],
   ],
   limits: [10, 25, 100],
 };
@@ -53,7 +54,8 @@ const ALIASES = {
 
 const TIME_DIMENSIONS = ['day', 'month'];
 
-const label = (list, value) => list.find(([v]) => String(v) === String(value))?.[1] ?? value;
+// Libellé français, et seulement lui : il sert dans les commentaires SQL, qui ne changent pas avec la langue.
+const label = (list, value) => list.find(([v]) => String(v) === String(value))?.[1].fr ?? value;
 
 function duckdbExpression(dimension) {
   if (dimension.startsWith('tag:')) return `json_extract_string(Tags, '$.${dimension.slice(4)}')`;

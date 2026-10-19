@@ -4,50 +4,51 @@ import { teams, projects, rows, focusRows, recommendations, sum, allocation, com
 import { toFocusCsv } from '../focus.js';
 import {
   state, DEFAULTS, MONTHS, STATUS, DECISION_DONE, persist, rerender,
-  projectById, ownerOf, inTeam, teamLabel, statusOf, periodRows, teamRecommendations, totals,
+  projectById, projectLabel, ownerOf, inTeam, teamLabel, envLabel, statusOf, periodRows, teamRecommendations, totals,
 } from '../state.js';
 import {
   $, money, pct, signedPct, kEuros, plural, esc, icon, pageHead, selectField, filterBar,
   term, operator, statusText, meter, toast, download, openSheet, sheetHead,
 } from '../ui.js';
 import { lineChart, bindCharts, serviceBars } from '../charts.js';
+import { t, pick, locale } from '../i18n.js';
 
-const periodField = () => selectField('period', 'Période', [[9, MONTHS[9].label], [8, MONTHS[8].label]], state.month);
+const periodField = () => selectField('period', t('demo.period'), [[9, pick(MONTHS[9].label)], [8, pick(MONTHS[8].label)]], state.month);
 
-const teamField = () => selectField('team', 'Équipe',
-  [['all', 'Toutes les équipes'], ...[...teams, 'Partagé'].map((t) => [t, teamLabel(t)])], state.team);
+const teamField = () => selectField('team', t('demo.team'),
+  [['all', t('demo.allTeams')], ...[...teams, 'Partagé'].map((team) => [team, teamLabel(team)])], state.team);
 
 function dailyChart(input) {
   const month = MONTHS[state.month];
   const partial = state.month === 9;
   const xs = Array.from({ length: month.days }, (_, i) => i + 1);
   const daily = (list) => xs.map((day) => sum(list.filter((r) => r.day === day), (r) => r.cost));
-  const series = [{ key: 'current', label: partial ? 'Septembre 2026' : 'Août 2026', values: daily(input) }];
+  const series = [{ key: 'current', label: partial ? t('demo.septCurrent') : t('demo.augCurrent'), values: daily(input) }];
   if (partial) {
-    series.push({ key: 'reference', label: 'Août 2026, mêmes jours', values: daily(rows.filter((r) => r.month === 8 && r.day <= month.days && inTeam(r.project))) });
+    series.push({ key: 'reference', label: t('demo.augSameDays'), values: daily(rows.filter((r) => r.month === 8 && r.day <= month.days && inTeam(r.project))) });
   }
   const step = month.days > 20 ? 6 : 3;
 
   const chart = lineChart({
     id: 'daily',
-    label: `Dépenses quotidiennes en euros, ${partial ? 'septembre comparé à août' : 'août 2026'}`,
+    label: t(partial ? 'demo.dailyLabelPartial' : 'demo.dailyLabelClosed'),
     xs,
     xDomain: [1, month.days],
-    xTicks: xs.filter((d) => (d - 1) % step === 0 || d === month.days).map((d) => ({ value: d, label: `${d} ${month.axis}` })),
+    xTicks: xs.filter((d) => (d - 1) % step === 0 || d === month.days).map((d) => ({ value: d, label: `${d} ${pick(month.axis)}` })),
     series,
     axis: kEuros,
-    title: (d) => `${d} ${month.name} 2026`,
+    title: (d) => t('demo.dayTitle', { day: d, month: pick(month.name) }),
     value: (cents) => money(cents),
-    annotations: partial && inTeam('atlas-analytics-prod') ? [{ x: 11, label: 'Début de la dérive BigQuery', tone: 'critical', align: 'end' }] : [],
+    annotations: partial && inTeam('atlas-analytics-prod') ? [{ x: 11, label: t('demo.bigQueryDriftStart'), tone: 'critical', align: 'end' }] : [],
   });
 
   const table = `
     <details class="data-view">
-      <summary>Afficher les valeurs</summary>
+      <summary>${t('demo.showValues')}</summary>
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Jour</th>${series.map((s) => `<th scope="col" class="num">${esc(s.label)}</th>`).join('')}</tr></thead>
-          <tbody>${xs.map((d, i) => `<tr><th scope="row">${d} ${month.name}</th>${series.map((s) => `<td class="num">${money(s.values[i], 2)}</td>`).join('')}</tr>`).join('')}</tbody>
+          <thead><tr><th scope="col">${t('demo.day')}</th>${series.map((s) => `<th scope="col" class="num">${esc(s.label)}</th>`).join('')}</tr></thead>
+          <tbody>${xs.map((d, i) => `<tr><th scope="row">${d} ${pick(month.name)}</th>${series.map((s) => `<td class="num">${money(s.values[i], 2)}</td>`).join('')}</tr>`).join('')}</tbody>
         </table>
       </div>
     </details>`;
@@ -59,72 +60,75 @@ function dailyChart(input) {
 
 function overview() {
   const input = periodRows();
-  const t = totals(input);
+  const figures = totals(input);
   const partial = state.month === 9;
   const open = teamRecommendations().filter((r) => statusOf(r.id) !== 'rejected');
   const unallocated = sum(input.filter((r) => !ownerOf(r.project)), (r) => r.cost);
-  const allocatedShare = t.total ? (1 - unallocated / t.total) * 100 : 100;
+  const allocatedShare = figures.total ? (1 - unallocated / figures.total) * 100 : 100;
 
   return pageHead(
-    'Vue d’ensemble',
-    'Coût effectif (EffectiveCost, amorti) de l’organisation de démonstration, en euros hors taxes.',
-    `<button class="btn" data-action="export">${icon('download')}Exporter au format FOCUS</button>`,
+    t('demo.overview'),
+    t('demo.overviewLede'),
+    `<button class="btn" data-action="export">${icon('download')}${t('demo.exportFocus')}</button>`,
     ['Reporting & Analytics', 'Forecasting', 'Anomaly Management'],
   )
-    + filterBar([periodField(), teamField()], `Données arrêtées au ${MONTHS[state.month].cutoff}`)
-    + forecastStatement(t)
+    + filterBar([periodField(), teamField()], t('demo.dataCutoff', { date: pick(MONTHS[state.month].cutoff) }))
+    + forecastStatement(figures)
     + `
     <div class="followups">
-      <p>Potentiel d’optimisation : <strong>${money(sum(open, (r) => r.saving))} par mois</strong>, estimé sur ${plural(open.length, 'piste', 'pistes')}.
-        <a class="link" href="#demo/optimise" data-nav="demo/optimise">Voir les pistes</a></p>
-      <p>Coûts attribués à une équipe : <strong>${pct(allocatedShare)}</strong>${unallocated
-        ? `, ${money(unallocated)} sans équipe. <a class="link" href="#demo/allocation" data-nav="demo/allocation">Attribuer</a>`
+      <p>${t('demo.potentialLine', {
+        amount: `<strong>${money(sum(open, (r) => r.saving))} ${t('demo.perMonth')}</strong>`,
+        leads: plural(open.length, t('demo.leadOne'), t('demo.leadMany')),
+      })}
+        <a class="link" href="#demo/optimise" data-nav="demo/optimise">${t('demo.seeLeads')}</a></p>
+      <p>${t('demo.allocatedShare', { share: `<strong>${pct(allocatedShare)}</strong>` })}${unallocated
+        ? `${t('demo.unassignedNote', { amount: money(unallocated) })} <a class="link" href="#demo/allocation" data-nav="demo/allocation">${t('demo.assign')}</a>`
         : '.'}</p>
     </div>`
     + (partial && inTeam('atlas-analytics-prod') ? driftNotice() : '')
     + `
     <div class="split section">
       <section aria-labelledby="daily-title">
-        <h2 id="daily-title">Dépenses quotidiennes</h2>
-        <p class="section-note">${partial ? 'Septembre comparé aux mêmes jours d’août.' : 'Mois clôturé.'}</p>
+        <h2 id="daily-title">${t('demo.dailySpend')}</h2>
+        <p class="section-note">${partial ? t('demo.sameDaysNote') : t('demo.closedMonth')}</p>
         ${dailyChart(input)}
       </section>
       <section aria-labelledby="services-title">
-        <h2 id="services-title">Par service</h2>
-        <p class="section-note">Coût effectif sur la période.</p>
+        <h2 id="services-title">${t('demo.byService')}</h2>
+        <p class="section-note">${t('demo.effectiveCostPeriod')}</p>
         ${serviceBars(input)}
       </section>
     </div>`
     + projectTable(input);
 }
 
-function forecastStatement(t) {
+function forecastStatement(figures) {
   const partial = state.month === 9;
-  const gap = t.forecast - t.budget;
-  const ratio = t.budget ? t.forecast / t.budget * 100 : 0;
+  const gap = figures.forecast - figures.budget;
+  const ratio = figures.budget ? figures.forecast / figures.budget * 100 : 0;
   const budgetNote = gap > 0
-    ? statusText('critical', `Dépassement ${partial ? 'prévu ' : ''}de ${money(gap)}`)
-    : statusText('good', `Marge ${partial ? 'prévue ' : ''}de ${money(-gap)}`);
-  const budget = term('Budget mensuel', money(t.budget), budgetNote, 'term-aside');
+    ? statusText('critical', partial ? t('demo.overrunForecast', { amount: money(gap) }) : t('demo.overrun', { amount: money(gap) }))
+    : statusText('good', partial ? t('demo.marginForecast', { amount: money(-gap) }) : t('demo.margin', { amount: money(-gap) }));
+  const budget = term(t('demo.monthlyBudget'), money(figures.budget), budgetNote, 'term-aside');
 
   // Chaque terme est arrondi à l'euro ; le reste à courir est déduit des arrondis pour que l'addition tombe juste.
   const euro = (cents) => Math.round(cents / 100) * 100;
 
   if (!partial) {
     return `
-      <section class="statement" aria-label="Réalisé et budget">
-        ${term('Réalisé en août', `<span class="total">${money(t.total)}</span>`, `Mois clôturé, ${pct(ratio)} du budget`, 'term-result')}
+      <section class="statement" aria-label="${t('demo.actualAndBudget')}">
+        ${term(t('demo.actualAug'), `<span class="total">${money(figures.total)}</span>`, t('demo.closedBudgetNote', { share: pct(ratio) }), 'term-result')}
         ${budget}
       </section>`;
   }
 
   return `
-    <section class="statement" aria-label="Projection de fin de mois">
-      ${term('Réalisé du 1er au 15 sept.', money(t.total), `${signedPct(t.delta)} par rapport au 1er–15 août`)}
-      ${operator('+', 'plus')}
-      ${term('Reste à courir, 15 jours', money(euro(t.forecast) - euro(t.total)), 'Moyenne des 7 derniers jours × 15')}
-      ${operator('=', 'égale')}
-      ${term('Projection fin septembre', `<span class="total">${money(t.forecast)}</span>`, `${pct(ratio)} du budget`, 'term-result')}
+    <section class="statement" aria-label="${t('demo.monthEndForecast')}">
+      ${term(t('demo.actualSeptFirst'), money(figures.total), t('demo.vsAugFirst', { delta: signedPct(figures.delta) }))}
+      ${operator('+', t('demo.opPlus'))}
+      ${term(t('demo.remaining15'), money(euro(figures.forecast) - euro(figures.total)), t('demo.avgLast7'))}
+      ${operator('=', t('demo.opEquals'))}
+      ${term(t('demo.forecastSept'), `<span class="total">${money(figures.forecast)}</span>`, t('demo.ofBudget', { share: pct(ratio) }), 'term-result')}
       ${budget}
     </section>`;
 }
@@ -136,8 +140,8 @@ function driftNotice() {
   return `
     <div class="notice notice-critical">
       ${icon('alert')}
-      <p><strong>Dérive BigQuery sur Atlas Analytics.</strong> Depuis le 11 septembre, le projet coûte environ ${money(Math.round(extra / 10000) * 10000)} de plus par jour.</p>
-      <div class="notice-actions"><button class="btn" data-rec="bq-partition">Examiner la dérive</button></div>
+      <p><strong>${t('demo.driftTitle')}</strong> ${t('demo.driftBody', { amount: money(Math.round(extra / 10000) * 10000) })}</p>
+      <div class="notice-actions"><button class="btn" data-rec="bq-partition">${t('demo.reviewDrift')}</button></div>
     </div>`;
 }
 
@@ -153,28 +157,28 @@ function projectTable(input) {
     <section class="section" aria-labelledby="projects-title">
       <div class="section-head">
         <div>
-          <h2 id="projects-title">Projets</h2>
-          <p class="section-note">Budget consommé : dépenses de la période rapportées au budget mensuel. Montants arrondis à l’euro.</p>
+          <h2 id="projects-title">${t('demo.projects')}</h2>
+          <p class="section-note">${t('demo.budgetUsedNote')}</p>
         </div>
       </div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th scope="col">Projet</th>
-              <th scope="col">Équipe</th>
-              <th scope="col">Environnement</th>
-              <th scope="col">Région</th>
-              <th scope="col" class="num">Dépenses</th>
-              <th scope="col" class="num">Budget consommé</th>
+              <th scope="col">${t('demo.colProject')}</th>
+              <th scope="col">${t('demo.team')}</th>
+              <th scope="col">${t('demo.colEnv')}</th>
+              <th scope="col">${t('demo.colRegion')}</th>
+              <th scope="col" class="num">${t('demo.colSpend')}</th>
+              <th scope="col" class="num">${t('demo.colBudgetUsed')}</th>
             </tr>
           </thead>
           <tbody>
             ${list.map((p) => `
               <tr>
-                <td><button class="row-link" data-project="${p.id}">${esc(p.name)}</button><span class="cell-sub">${p.id}</span></td>
-                <td>${ownerOf(p.id) ? esc(teamLabel(ownerOf(p.id))) : statusText('critical', 'À attribuer')}</td>
-                <td>${p.env}</td>
+                <td><button class="row-link" data-project="${p.id}">${esc(projectLabel(p.id))}</button><span class="cell-sub">${p.id}</span></td>
+                <td>${ownerOf(p.id) ? esc(teamLabel(ownerOf(p.id))) : statusText('critical', t('demo.toAssign'))}</td>
+                <td>${envLabel(p.env)}</td>
                 <td>${p.region}</td>
                 <td class="num">${money(p.cost)}</td>
                 <td class="num">${meter(p.cost / (p.budget * 100) * 100)}</td>
@@ -182,7 +186,7 @@ function projectTable(input) {
           </tbody>
           <tfoot>
             <tr class="total-row">
-              <th scope="row">Total, ${plural(list.length, 'projet', 'projets')}</th>
+              <th scope="row">${t('demo.totalCount', { count: plural(list.length, t('demo.projectOne'), t('demo.projectMany')) })}</th>
               <td></td><td></td><td></td>
               <td class="num">${money(total)}</td>
               <td class="num">${budget ? meter(total / budget * 100) : ''}</td>
@@ -202,31 +206,31 @@ function optimise() {
   const approved = recs.filter((r) => ['approved', 'implemented'].includes(statusOf(r.id)));
 
   return pageHead(
-    'Optimisations',
-    'Pistes chiffrées au 15 septembre 2026. Chaque décision est motivée, et chaque gain reste à mesurer après déploiement.',
+    t('demo.optimizations'),
+    t('demo.optimizationsLede'),
     '',
     ['Usage Optimization', 'Rate Optimization'],
   )
     + filterBar([
       teamField(),
-      selectField('rec-filter', 'Statut', [['all', 'Tous les statuts'], ...Object.entries(STATUS)], state.recFilter),
-    ], 'Estimations mensuelles, indépendantes de la période choisie')
+      selectField('rec-filter', t('demo.status'), [['all', t('demo.allStatuses')], ...Object.entries(STATUS).map(([key, label]) => [key, pick(label)])], state.recFilter),
+    ], t('demo.monthlyEstimates'))
     + `
     <dl class="figures">
       <div class="figure">
-        <dt>Potentiel estimé</dt>
-        <dd class="figure-value">${money(sum(open, (r) => r.saving))}<span class="unit"> par mois</span></dd>
-        <dd class="figure-note">${plural(open.length, 'piste non écartée', 'pistes non écartées')}, hors engagements CUD</dd>
+        <dt>${t('demo.estimatedPotential')}</dt>
+        <dd class="figure-value">${money(sum(open, (r) => r.saving))}<span class="unit"> ${t('demo.perMonth')}</span></dd>
+        <dd class="figure-note">${plural(open.length, t('demo.leadOpenOne'), t('demo.leadOpenMany'))}${t('demo.excludingCud')}</dd>
       </div>
       <div class="figure">
-        <dt>Pistes validées</dt>
-        <dd class="figure-value">${money(sum(approved, (r) => r.saving))}<span class="unit"> par mois</span></dd>
-        <dd class="figure-note">${approved.length} sur ${recs.length}</dd>
+        <dt>${t('demo.approvedLeads')}</dt>
+        <dd class="figure-value">${money(sum(approved, (r) => r.saving))}<span class="unit"> ${t('demo.perMonth')}</span></dd>
+        <dd class="figure-note">${t('demo.countOfTotal', { count: approved.length, total: recs.length })}</dd>
       </div>
       <div class="figure">
-        <dt>Gains constatés</dt>
-        <dd class="figure-value">Non mesurés</dd>
-        <dd class="figure-note">Mesure après déploiement, à volume comparable</dd>
+        <dt>${t('demo.realizedSavings')}</dt>
+        <dd class="figure-value">${t('demo.notMeasured')}</dd>
+        <dd class="figure-note">${t('demo.measureNote')}</dd>
       </div>
     </dl>`
     + recommendationTable(visible)
@@ -237,17 +241,17 @@ function recommendationTable(list) {
   const counted = list.filter((r) => statusOf(r.id) !== 'rejected');
   return `
     <section class="section" aria-labelledby="plan-title">
-      <div class="section-head"><h2 id="plan-title">Plan d’optimisation</h2></div>
+      <div class="section-head"><h2 id="plan-title">${t('demo.optimizationPlan')}</h2></div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th scope="col">Piste</th>
-              <th scope="col">Service et projet</th>
-              <th scope="col">Risque</th>
-              <th scope="col">Effort</th>
-              <th scope="col">Statut</th>
-              <th scope="col" class="num">Gain estimé par mois</th>
+              <th scope="col">${t('demo.colLead')}</th>
+              <th scope="col">${t('demo.colServiceProject')}</th>
+              <th scope="col">${t('demo.colRisk')}</th>
+              <th scope="col">${t('demo.colEffort')}</th>
+              <th scope="col">${t('demo.status')}</th>
+              <th scope="col" class="num">${t('demo.colEstimatedSaving')}</th>
             </tr>
           </thead>
           <tbody>
@@ -255,19 +259,19 @@ function recommendationTable(list) {
               const rejected = statusOf(r.id) === 'rejected';
               return `
                 <tr class="${rejected ? 'is-rejected' : ''}">
-                  <td class="cell-wide"><button class="row-link" data-rec="${r.id}">${esc(r.title)}</button><span class="cell-sub">${esc(r.description)}</span></td>
+                  <td class="cell-wide"><button class="row-link" data-rec="${r.id}">${esc(pick(r.title))}</button><span class="cell-sub">${esc(pick(r.description))}</span></td>
                   <td>${r.service}<span class="cell-sub">${r.project}</span></td>
-                  <td>${r.risk}</td>
-                  <td>${r.effort}</td>
-                  <td>${STATUS[statusOf(r.id)]}</td>
+                  <td>${pick(r.risk)}</td>
+                  <td>${pick(r.effort)}</td>
+                  <td>${pick(STATUS[statusOf(r.id)])}</td>
                   <td class="num"><span class="amount">${money(r.saving)}</span></td>
                 </tr>`;
-            }).join('') : `<tr><td colspan="6" class="empty">Aucune piste avec ce statut pour cette équipe. Choisissez « Tous les statuts » pour tout afficher.</td></tr>`}
+            }).join('') : `<tr><td colspan="6" class="empty">${t('demo.noLeads')}</td></tr>`}
           </tbody>
           ${list.length ? `
           <tfoot>
             <tr class="total-row">
-              <th scope="row" colspan="5">Total affiché, hors pistes écartées</th>
+              <th scope="row" colspan="5">${t('demo.totalShown')}</th>
               <td class="num">${money(sum(counted, (r) => r.saving))}</td>
             </tr>
           </tfoot>` : ''}
@@ -277,31 +281,31 @@ function recommendationTable(list) {
 }
 
 function decisionLog() {
-  const time = (iso) => new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const time = (iso) => new Date(iso).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
   return `
     <section class="section" aria-labelledby="log-title">
       <div class="section-head">
         <div>
-          <h2 id="log-title">Journal des décisions</h2>
-          <p class="section-note">Décisions motivées, enregistrées uniquement dans cet onglet.</p>
+          <h2 id="log-title">${t('demo.decisionLog')}</h2>
+          <p class="section-note">${t('demo.decisionLogNote')}</p>
         </div>
-        <button class="btn" data-action="export-decisions" ${state.decisions.length ? '' : 'disabled'}>Exporter en JSON</button>
+        <button class="btn" data-action="export-decisions" ${state.decisions.length ? '' : 'disabled'}>${t('demo.exportJson')}</button>
       </div>
       ${state.decisions.length ? `
       <div class="table-wrap">
         <table>
-          <thead><tr><th scope="col">Heure</th><th scope="col">Piste</th><th scope="col">Décision</th><th scope="col">Motif</th></tr></thead>
+          <thead><tr><th scope="col">${t('demo.colTime')}</th><th scope="col">${t('demo.colLead')}</th><th scope="col">${t('demo.colDecision')}</th><th scope="col">${t('demo.colReason')}</th></tr></thead>
           <tbody>
             ${state.decisions.slice().reverse().map((d) => `
               <tr>
                 <td class="nowrap">${time(d.at)}</td>
-                <td>${esc(recommendations.find((r) => r.id === d.id).title)}</td>
-                <td class="nowrap">${STATUS[d.status]}</td>
+                <td>${esc(pick(recommendations.find((r) => r.id === d.id).title))}</td>
+                <td class="nowrap">${pick(STATUS[d.status])}</td>
                 <td>${esc(d.note)}</td>
               </tr>`).join('')}
           </tbody>
         </table>
-      </div>` : '<p class="empty">Aucune décision pour l’instant. Ouvrez une piste pour la valider ou l’écarter.</p>'}
+      </div>` : `<p class="empty">${t('demo.noDecisions')}</p>`}
     </section>`;
 }
 
@@ -317,49 +321,49 @@ function allocationView() {
   const share = (v) => a.total ? pct(v / a.total * 100) : '—';
 
   return pageHead(
-    'Allocation',
-    'Répartir les coûts par équipe, redistribuer le socle partagé et vérifier que le total est rapproché au centime.',
-    `<button class="btn" data-action="export-allocation">Exporter le showback</button>
-     <button class="btn btn-primary" data-action="export-chargeback" ${a.unallocated ? 'disabled' : ''}>Préparer le chargeback</button>`,
+    t('demo.allocation'),
+    t('demo.allocationLede'),
+    `<button class="btn" data-action="export-allocation">${t('demo.exportShowback')}</button>
+     <button class="btn btn-primary" data-action="export-chargeback" ${a.unallocated ? 'disabled' : ''}>${t('demo.prepareChargeback')}</button>`,
     ['Allocation', 'Invoicing & Chargeback'],
   )
     + filterBar([
       periodField(),
-      selectField('allocation-method', 'Clé de partage du socle', [['usage', 'Prorata des coûts directs'], ['equal', 'Parts égales']], state.method),
-    ], 'Organisation entière. Brouillon de refacturation, aucune écriture comptable.')
+      selectField('allocation-method', t('demo.sharingKey'), [['usage', t('demo.byDirectCost')], ['equal', t('demo.equalShares')]], state.method),
+    ], t('demo.allocationNote'))
     + (unowned.length ? `
     <div class="notice notice-critical">
       ${icon('alert')}
-      <p><strong>Sandbox R&amp;D n’a pas d’équipe responsable.</strong> ${money(a.unallocated)} ne peuvent pas être refacturés, et le chargeback reste bloqué tant qu’aucune équipe n’est choisie.</p>
+      <p><strong>${t('demo.sandboxNoOwner')}</strong> ${t('demo.unassignedBlocked', { amount: money(a.unallocated) })}</p>
       <div class="notice-actions">
-        <label class="sr-only" for="assign-owner">Équipe responsable de Sandbox R&amp;D</label>
-        <select id="assign-owner">${teams.map((t) => `<option ${t === 'Innovation' ? 'selected' : ''}>${t}</option>`).join('')}</select>
-        <button class="btn btn-primary" data-action="assign">Attribuer</button>
+        <label class="sr-only" for="assign-owner">${t('demo.ownerOfSandbox')}</label>
+        <select id="assign-owner">${teams.map((team) => `<option value="${esc(team)}" ${team === 'Innovation' ? 'selected' : ''}>${esc(teamLabel(team))}</option>`).join('')}</select>
+        <button class="btn btn-primary" data-action="assign">${t('demo.assign')}</button>
       </div>
     </div>` : `
     <div class="notice notice-good">
       ${icon('check')}
-      <p><strong>Tous les coûts ont une équipe.</strong> Le brouillon de chargeback peut être préparé.</p>
+      <p><strong>${t('demo.allCostsOwned')}</strong> ${t('demo.chargebackReady')}</p>
     </div>`)
     + `
     <section class="section" aria-labelledby="split-title">
       <div class="section-head">
         <div>
-          <h2 id="split-title">Répartition par équipe</h2>
-          <p class="section-note">Les coûts directs restent à l’équipe ; seul le socle partagé est redistribué.</p>
+          <h2 id="split-title">${t('demo.splitTitle')}</h2>
+          <p class="section-note">${t('demo.splitNote')}</p>
         </div>
         <ul class="legend">
-          <li><span class="key key-rect key-direct"></span>Coûts directs</li>
-          <li><span class="key key-rect key-shared"></span>Quote-part du socle partagé</li>
+          <li><span class="key key-rect key-direct"></span>${t('demo.directCosts')}</li>
+          <li><span class="key key-rect key-shared"></span>${t('demo.sharedShare')}</li>
         </ul>
       </div>
       <div class="stacks">
         ${a.items.map((r) => `
           <div class="stack-row">
-            <span class="stack-name">${r.team}</span>
-            <span class="stack" role="img" aria-label="${r.team} : ${money(r.direct)} de coûts directs et ${money(r.shared)} de socle partagé">
-              <span class="stack-direct" style="width:${(r.direct / max * 98).toFixed(2)}%" title="Coûts directs : ${money(r.direct)}"></span>
-              ${r.shared ? `<span class="stack-shared" style="width:${(r.shared / max * 98).toFixed(2)}%" title="Socle partagé : ${money(r.shared)}"></span>` : ''}
+            <span class="stack-name">${teamLabel(r.team)}</span>
+            <span class="stack" role="img" aria-label="${t('demo.stackAria', { team: teamLabel(r.team), direct: money(r.direct), shared: money(r.shared) })}">
+              <span class="stack-direct" style="width:${(r.direct / max * 98).toFixed(2)}%" title="${t('demo.directCostsTitle', { amount: money(r.direct) })}"></span>
+              ${r.shared ? `<span class="stack-shared" style="width:${(r.shared / max * 98).toFixed(2)}%" title="${t('demo.sharedTitle', { amount: money(r.shared) })}"></span>` : ''}
             </span>
             <span class="stack-value">${money(r.total)}</span>
           </div>`).join('')}
@@ -369,17 +373,17 @@ function allocationView() {
         <table>
           <thead>
             <tr>
-              <th scope="col">Équipe</th>
-              <th scope="col" class="num">Coûts directs</th>
-              <th scope="col" class="num">Socle partagé</th>
-              <th scope="col" class="num">Total alloué</th>
-              <th scope="col" class="num">Part du total</th>
+              <th scope="col">${t('demo.team')}</th>
+              <th scope="col" class="num">${t('demo.directCosts')}</th>
+              <th scope="col" class="num">${t('demo.sharedPlatform')}</th>
+              <th scope="col" class="num">${t('demo.totalAllocated')}</th>
+              <th scope="col" class="num">${t('demo.shareOfTotal')}</th>
             </tr>
           </thead>
           <tbody>
             ${a.items.map((r) => `
               <tr>
-                <th scope="row">${r.team}</th>
+                <th scope="row">${teamLabel(r.team)}</th>
                 <td class="num">${money(r.direct, 2)}</td>
                 <td class="num">${money(r.shared, 2)}</td>
                 <td class="num">${money(r.total, 2)}</td>
@@ -387,7 +391,7 @@ function allocationView() {
               </tr>`).join('')}
             ${a.unallocated ? `
               <tr>
-                <th scope="row">${statusText('critical', 'Non attribué')}</th>
+                <th scope="row">${statusText('critical', t('demo.unassigned'))}</th>
                 <td class="num">${money(a.unallocated, 2)}</td>
                 <td class="num">—</td>
                 <td class="num">${money(a.unallocated, 2)}</td>
@@ -396,24 +400,30 @@ function allocationView() {
           </tbody>
           <tfoot>
             <tr class="total-row">
-              <th scope="row">Total rapproché</th>
+              <th scope="row">${t('demo.reconciledTotal')}</th>
               <td class="num">${money(a.totalDirect + a.unallocated, 2)}</td>
               <td class="num">${money(a.shared, 2)}</td>
               <td class="num">${money(a.total, 2)}</td>
-              <td class="num">100 %</td>
+              <td class="num">${pct(100)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
 
       <div class="check">
-        <p class="check-formula">Total facturé ${money(a.total, 2)} − alloué aux équipes ${money(allocated, 2)} − non attribué ${money(a.unallocated, 2)} = <strong>${money(gap, 2)}</strong></p>
-        ${gap === 0 ? statusText('good', 'Rapproché au centime') : statusText('critical', 'Écart à analyser')}
+        <p class="check-formula">${t('demo.checkFormula', {
+          billed: money(a.total, 2),
+          allocated: money(allocated, 2),
+          unassigned: money(a.unallocated, 2),
+          gap: `<strong>${money(gap, 2)}</strong>`,
+        })}</p>
+        ${gap === 0 ? statusText('good', t('demo.reconciledToCent')) : statusText('critical', t('demo.gapToReview'))}
       </div>
 
-      <p class="section-note">Montants en coût effectif (EffectiveCost) : la remise du CUD flexible profite aux projets qui consomment, sa part inutilisée reste au socle partagé. Les centimes résiduels sont attribués aux plus forts restes. ${state.method === 'usage'
-        ? 'La clé dépend des dépenses directes connues, sans utiliser les coûts non attribués.'
-        : 'Le socle partagé est divisé entre les quatre équipes.'} ${state.month === 9 ? 'Septembre est une période partielle : tout export de chargeback reste provisoire.' : ''}</p>
+      <p class="section-note">${pick({
+        fr: 'Montants en coût effectif (EffectiveCost) : la remise du CUD flexible profite aux projets qui consomment, sa part inutilisée reste au socle partagé. Les centimes résiduels sont attribués aux plus forts restes.',
+        en: 'Amounts in effective cost (EffectiveCost): the flexible CUD discount benefits the projects that consume, and its unused share stays with the shared platform. Leftover cents go to the largest remainders.',
+      })} ${state.method === 'usage' ? t('demo.methodUsage') : t('demo.methodEqual')} ${state.month === 9 ? t('demo.septPartial') : ''}</p>
     </section>`;
 }
 
@@ -424,42 +434,42 @@ function range(id, label, min, max, minNote = '', maxNote = '') {
     <div class="control">
       <div class="control-head">
         <label for="${id}">${label}</label>
-        <output id="${id}-output" for="${id}">${state[id]} %</output>
+        <output id="${id}-output" for="${id}">${pct(state[id])}</output>
       </div>
       <input id="${id}" type="range" min="${min}" max="${max}" step="1" value="${state[id]}">
-      <div class="range-scale"><span>${min} %${minNote}</span><span>${max} %${maxNote}</span></div>
+      <div class="range-scale"><span>${pct(min)}${minNote}</span><span>${pct(max)}${maxNote}</span></div>
     </div>`;
 }
 
 function simulate() {
   return pageHead(
-    'Simulateur CUD',
-    'Comparer un engagement de consommation à la facturation à la demande, y compris quand l’usage baisse.',
+    t('demo.cudSimulator'),
+    t('demo.cudLede'),
     '',
     ['Rate Optimization', 'Planning & Estimating'],
   ) + `
     <div class="sim">
       <section class="controls" aria-labelledby="controls-title">
-        <h2 id="controls-title">Hypothèses</h2>
+        <h2 id="controls-title">${t('demo.assumptions')}</h2>
         <div class="control">
-          <label for="base">Dépense à la demande à 100 % d’usage</label>
+          <label for="base">${t('demo.onDemandAt100', { usage: pct(100) })}</label>
           <div class="input-affix">
             <input id="base" type="number" min="100" max="1000000" step="100" value="${state.base}" inputmode="numeric">
-            <span>€ par mois</span>
+            <span>${t('demo.eurosPerMonth')}</span>
           </div>
         </div>
-        ${range('usage', 'Usage réel', 20, 120, ', contraction', ', croissance')}
-        ${range('commit', 'Part du socle engagée', 0, 100)}
-        ${range('discount', 'Remise de l’engagement', 10, 60)}
+        ${range('usage', t('demo.realUsage'), 20, 120, t('demo.contractionNote'), t('demo.growthNote'))}
+        ${range('commit', t('demo.committedShare'), 0, 100)}
+        ${range('discount', t('demo.commitDiscount'), 10, 60)}
         <div class="control">
-          <p class="control-label">Scénarios</p>
+          <p class="control-label">${t('demo.scenarios')}</p>
           <div class="presets">
-            <button class="btn btn-small" data-scenario="stable">Usage stable</button>
-            <button class="btn btn-small" data-scenario="drop">Usage à 40 %</button>
-            <button class="btn btn-small" data-scenario="none">Sans engagement</button>
+            <button class="btn btn-small" data-scenario="stable">${t('demo.scenarioStable')}</button>
+            <button class="btn btn-small" data-scenario="drop">${t('demo.scenarioDrop', { usage: pct(40) })}</button>
+            <button class="btn btn-small" data-scenario="none">${t('demo.scenarioNone')}</button>
           </div>
         </div>
-        <p class="control-note">Paramètres illustratifs, sans valeur de devis. Le calcul exclut taxes, change, autres remises et granularité horaire. Aucun engagement n’est acheté.</p>
+        <p class="control-note">${t('demo.simNote')}</p>
       </section>
       <div id="simulation-results"></div>
     </div>`;
@@ -471,51 +481,51 @@ function simResults() {
   const euros = (v) => money(Math.round(v * 100));
   const breakeven = commit * (1 - discount / 100);
   const outcome = r.saving > 0
-    ? statusText('good', `Économie de ${euros(r.saving)} par mois`)
+    ? statusText('good', t('demo.savingPerMonth', { amount: euros(r.saving) }))
     : r.saving < 0
-      ? statusText('critical', `Surcoût de ${euros(-r.saving)} par mois`)
-      : '<span class="status">Aucun écart</span>';
+      ? statusText('critical', t('demo.overcostPerMonth', { amount: euros(-r.saving) }))
+      : `<span class="status">${t('demo.noGap')}</span>`;
 
   const xs = [...new Set([...Array.from({ length: 25 }, (_, i) => i * 5), commit, usage])].sort((a, b) => a - b);
 
   return `
-    <section class="statement statement-compact" aria-label="Coût mensuel avec engagement">
-      ${term('Engagement fixe', euros(r.fee), `${commit} % du socle, remise de ${discount} %`)}
-      ${operator('+', 'plus')}
-      ${term('Usage au-delà', money(Math.round(r.cost) * 100 - Math.round(r.fee) * 100), 'Facturé à la demande')}
-      ${operator('=', 'égale')}
-      ${term('Avec engagement', `<span class="total">${euros(r.cost)}</span>`, `À ${usage} % d’usage`, 'term-result')}
-      ${term('À la demande', euros(r.actual), outcome, 'term-aside')}
+    <section class="statement statement-compact" aria-label="${t('demo.monthlyWithCommit')}">
+      ${term(t('demo.fixedCommitment'), euros(r.fee), t('demo.commitNote', { commit: pct(commit), discount: pct(discount) }))}
+      ${operator('+', t('demo.opPlus'))}
+      ${term(t('demo.usageAbove'), money(Math.round(r.cost) * 100 - Math.round(r.fee) * 100), t('demo.billedOnDemand'))}
+      ${operator('=', t('demo.opEquals'))}
+      ${term(t('demo.withCommitment'), `<span class="total">${euros(r.cost)}</span>`, t('demo.atUsage', { usage: pct(usage) }), 'term-result')}
+      ${term(t('demo.onDemand'), euros(r.actual), outcome, 'term-aside')}
     </section>
 
     ${r.unused ? `
     <div class="notice notice-critical">
       ${icon('alert')}
-      <p><strong>${euros(r.unused)} d’engagement payé sans être consommé.</strong> L’engagement reste dû même quand l’usage baisse.</p>
+      <p><strong>${t('demo.unusedTitle', { amount: euros(r.unused) })}</strong> ${t('demo.unusedBody')}</p>
     </div>` : ''}
 
     <section class="section section-tight" aria-labelledby="sim-chart-title">
-      <h2 id="sim-chart-title">Coût mensuel selon l’usage</h2>
+      <h2 id="sim-chart-title">${t('demo.monthlyByUsage')}</h2>
       <p class="section-note">${commit
-        ? `Dans ce modèle, l’engagement devient rentable au-delà de ${pct(breakeven)} d’usage. Taux d’utilisation de l’engagement : ${pct(r.utilization)}.`
-        : 'Sans engagement, toute la consommation reste facturée à la demande.'}</p>
+        ? t('demo.breakevenNote', { breakeven: pct(breakeven), utilization: pct(r.utilization) })
+        : t('demo.noCommitNote')}</p>
       ${lineChart({
         id: 'commitment',
-        label: 'Coût mensuel avec engagement comparé à la facturation à la demande, selon le niveau d’usage',
+        label: t('demo.commitChartLabel'),
         xs,
         xDomain: [0, 120],
-        xTicks: [0, 20, 40, 60, 80, 100, 120].map((u) => ({ value: u, label: `${u} %` })),
+        xTicks: [0, 20, 40, 60, 80, 100, 120].map((u) => ({ value: u, label: pct(u) })),
         series: [
-          { key: 'current', label: 'Avec engagement', values: xs.map((u) => commitment(base, u, commit, discount).cost * 100) },
-          { key: 'reference', label: 'À la demande', values: xs.map((u) => base * u) },
+          { key: 'current', label: t('demo.withCommitment'), values: xs.map((u) => commitment(base, u, commit, discount).cost * 100) },
+          { key: 'reference', label: t('demo.onDemand'), values: xs.map((u) => base * u) },
         ],
         axis: kEuros,
-        title: (u) => `Usage ${u} %`,
+        title: (u) => t('demo.usageTitle', { usage: pct(u) }),
         value: (cents) => money(Math.round(cents)),
-        annotations: [{ x: usage, label: `Usage actuel, ${usage} %`, tone: 'neutral', align: usage > 90 ? 'end' : 'start' }],
+        annotations: [{ x: usage, label: t('demo.currentUsage', { usage: pct(usage) }), tone: 'neutral', align: usage > 90 ? 'end' : 'start' }],
         dots: [{ key: 'current', x: usage, y: r.cost * 100 }],
       })}
-      <p class="section-note">Le gain d’un engagement ne s’additionne pas automatiquement aux gains de rightsizing : réduire la capacité réduit aussi la base à engager.</p>
+      <p class="section-note">${t('demo.rightsizingNote')}</p>
     </section>`;
 }
 
@@ -529,7 +539,7 @@ function bindSimulator() {
   ['usage', 'commit', 'discount'].forEach((id) => {
     $(`#${id}`).addEventListener('input', (e) => {
       state[id] = Number(e.target.value);
-      $(`#${id}-output`).textContent = `${state[id]} %`;
+      $(`#${id}-output`).textContent = pct(state[id]);
       update();
     });
   });
@@ -554,78 +564,117 @@ function bindSimulator() {
 
 function method() {
   const steps = [
-    ['demo/overview', '', 'Observer', 'Repérer la dérive BigQuery et la projection au-dessus du budget.'],
-    ['demo/optimise', 'bq-partition', 'Qualifier', 'Ouvrir la piste, justifier l’action et ses garde-fous.'],
-    ['demo/allocation', '', 'Responsabiliser', 'Attribuer Sandbox R&D, puis rapprocher les coûts.'],
-    ['demo/simulate', '', 'Arbitrer', 'Tester le risque d’un engagement trop élevé.'],
-    ['situations/bill-spike', '', 'Outiller', 'Ouvrir une situation terrain et lancer sa requête FOCUS.'],
+    ['demo/overview', '', t('demo.step1Title'), t('demo.step1Text')],
+    ['demo/optimise', 'bq-partition', t('demo.step2Title'), t('demo.step2Text')],
+    ['demo/allocation', '', t('demo.step3Title'), t('demo.step3Text')],
+    ['demo/simulate', '', t('demo.step4Title'), t('demo.step4Text')],
+    ['situations/bill-spike', '', t('demo.step5Title'), t('demo.step5Text')],
   ];
 
   const rules = [
-    ['Format', 'Lignes FOCUS 1.2 quotidiennes : usage, crédits, achat d’engagement et part inutilisée. La démo agrège l’EffectiveCost par jour, projet et service.'],
-    ['Engagement', 'CUD flexible de 1 900 € d’équivalent à la demande par jour, remise de 28 %, porté par le socle partagé. Frais en Purchase (EffectiveCost = 0), usage couvert en Used, reliquat en Unused.'],
-    ['Crédits', 'Crédit promotionnel de 2 % sur l’usage à la demande, en lignes Credit dont les quatre coûts sont égaux.'],
-    ['Projection', 'Septembre : réalisé du 1er au 15 + moyenne quotidienne des 7 derniers jours × 15 jours restants. Extrapolation simple, sans intervalle de confiance.'],
-    ['Comparaison', 'Septembre du 1er au 15 comparé à août du 1er au 15. Les budgets sont mensuels.'],
-    ['Potentiel', 'Somme des estimations des pistes non écartées, sur des ressources distinctes. Aucune économie constatée n’est inventée.'],
-    ['Répartition', 'Coûts directs par équipe, socle partagé redistribué au prorata ou à parts égales. Les coûts non attribués restent visibles et bloquent le chargeback.'],
-    ['Arrondis', 'Calculs en centimes entiers, reliquat aux plus forts restes. Affichage à l’euro, exports au centime.'],
+    [t('demo.ruleFormat'), pick({
+      fr: 'Lignes FOCUS 1.2 quotidiennes : usage, crédits, achat d’engagement et part inutilisée. La démo agrège l’EffectiveCost par jour, projet et service.',
+      en: 'Daily FOCUS 1.2 rows: usage, credits, commitment purchases and unused share. The demo aggregates EffectiveCost by day, project and service.',
+    })],
+    [t('demo.ruleCommitment'), t('demo.ruleCommitmentText', { fee: money(190000), discount: pct(28) })],
+    [t('demo.ruleCredits'), t('demo.ruleCreditsText', { share: pct(2) })],
+    [t('demo.ruleForecast'), pick({
+      fr: 'Septembre : réalisé du 1er au 15 + moyenne quotidienne des 7 derniers jours × 15 jours restants. Extrapolation simple, sans intervalle de confiance.',
+      en: 'September: actual from the 1st to the 15th + daily average of the last 7 days × 15 remaining days. Simple extrapolation, with no confidence interval.',
+    })],
+    [t('demo.ruleComparison'), pick({
+      fr: 'Septembre du 1er au 15 comparé à août du 1er au 15. Les budgets sont mensuels.',
+      en: 'September 1–15 compared with August 1–15. Budgets are monthly.',
+    })],
+    [t('demo.ruleLeads'), pick({
+      fr: 'Somme des estimations des pistes non écartées, sur des ressources distinctes. Aucune économie constatée n’est inventée.',
+      en: 'Sum of the estimates for open leads, on distinct resources. No realized saving is made up.',
+    })],
+    [t('demo.ruleAllocation'), pick({
+      fr: 'Coûts directs par équipe, socle partagé redistribué au prorata ou à parts égales. Les coûts non attribués restent visibles et bloquent le chargeback.',
+      en: 'Direct costs by team, shared platform redistributed pro rata or in equal shares. Unassigned costs stay visible and block the chargeback.',
+    })],
+    [t('demo.ruleRounding'), pick({
+      fr: 'Calculs en centimes entiers, reliquat aux plus forts restes. Affichage à l’euro, exports au centime.',
+      en: 'Calculations in whole cents, remainder allocated by largest remainders. Displayed to the euro, exports to the cent.',
+    })],
   ];
 
   const pipeline = [
-    ['Activer l’export FOCUS.', 'Google Cloud : export FOCUS vers BigQuery (preview), dans un projet dédié, lecture au moindre privilège. AWS et Azure : exports FOCUS vers S3 ou un compte de stockage.'],
-    ['Contrôler et rapprocher.', 'Lancer le contrôle qualité du Labo SQL, rapprocher BilledCost de la facture d’un mois clôturé, noter les écarts de conformité.'],
-    ['Attribuer et enrichir.', 'Rapprocher projets, labels et centres de coûts ; joindre les métriques d’usage et les propriétaires applicatifs.'],
-    ['Servir les vues de pilotage.', 'Ajouter une API authentifiée, un contrôle d’accès par équipe et un historique auditable des décisions.'],
+    [t('demo.pipeTitle1'), pick({
+      fr: 'Google Cloud : export FOCUS vers BigQuery (preview), dans un projet dédié, lecture au moindre privilège. AWS et Azure : exports FOCUS vers S3 ou un compte de stockage.',
+      en: 'Google Cloud: FOCUS export to BigQuery (preview), in a dedicated project, with least-privilege read access. AWS and Azure: FOCUS exports to S3 or a storage account.',
+    })],
+    [t('demo.pipeTitle2'), pick({
+      fr: 'Lancer le contrôle qualité du Labo SQL, rapprocher BilledCost de la facture d’un mois clôturé, noter les écarts de conformité.',
+      en: 'Run the quality check in the SQL Lab, reconcile BilledCost with the invoice of a closed month, and log compliance gaps.',
+    })],
+    [t('demo.pipeTitle3'), pick({
+      fr: 'Rapprocher projets, labels et centres de coûts ; joindre les métriques d’usage et les propriétaires applicatifs.',
+      en: 'Reconcile projects, labels and cost centers; attach usage metrics and application owners.',
+    })],
+    [t('demo.pipeTitle4'), pick({
+      fr: 'Ajouter une API authentifiée, un contrôle d’accès par équipe et un historique auditable des décisions.',
+      en: 'Add an authenticated API, team-based access control and an auditable decision history.',
+    })],
   ];
 
   const references = [
-    ['https://focus.finops.org/focus-specification/', 'Spécification FOCUS', 'Colonnes, valeurs autorisées et règles de coût.'],
-    ['https://www.finops.org/framework/', 'FinOps Framework', 'Principes, domaines, capacités et maturité.'],
-    ['https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/focus-export', 'Export FOCUS de Google Cloud', 'Schéma et écarts de conformité de l’export BigQuery.'],
-    ['https://cloud.google.com/docs/cuds', 'Engagements de consommation', 'Une dépense engagée reste due même si elle n’est pas utilisée.'],
+    ['https://focus.finops.org/focus-specification/', t('demo.refFocusTitle'), t('demo.refFocusText')],
+    ['https://www.finops.org/framework/', t('demo.refFinopsTitle'), t('demo.refFinopsText')],
+    ['https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/focus-export', t('demo.refGcpTitle'), t('demo.refGcpText')],
+    ['https://cloud.google.com/docs/cuds', t('demo.refCudsTitle'), t('demo.refCudsText')],
   ];
 
   return pageHead(
-    'Méthode',
-    'Périmètre des données, règles de calcul et passage à un export FOCUS réel.',
-    '<button class="btn" data-action="reset">Réinitialiser la démo</button>',
+    t('demo.method'),
+    t('demo.methodLede'),
+    `<button class="btn" data-action="reset">${t('demo.resetDemo')}</button>`,
   ) + `
     <section class="section section-first" aria-labelledby="tour-title">
-      <h2 id="tour-title">Parcours de démonstration en 5 minutes</h2>
+      <h2 id="tour-title">${t('demo.tour')}</h2>
       <ol class="steps">
         ${steps.map(([route, rec, title, text], i) => `
-          <li>
-            <a class="step" href="#${route}" ${rec ? `data-guide="${rec}"` : `data-nav="${route}"`}>
-              <span class="step-number">${i + 1}</span>
-              <strong>${title}</strong>
-              <span>${text}</span>
-            </a>
-          </li>`).join('')}
+        <li>
+          <a class="step" href="#${route}" ${rec ? `data-guide="${rec}"` : `data-nav="${route}"`}>
+            <span class="step-number">${i + 1}</span>
+            <strong>${title}</strong>
+            <span>${text}</span>
+          </a>
+        </li>`).join('')}
       </ol>
     </section>
 
     <div class="columns section">
       <section class="prose" aria-labelledby="scope-title">
-        <h2 id="scope-title">Périmètre</h2>
-        <p>8 projets fictifs, 4 équipes, 7 services Google Cloud et 2 régions européennes. Les données couvrent août 2026 et les 15 premiers jours de septembre, soit ${focusRows.length.toLocaleString('fr-FR')} lignes FOCUS.</p>
-        <p>Un générateur déterministe produit les mêmes lignes à chaque ouverture : variation quotidienne, activité réduite le week-end, croissance du stockage de Nova Intelligence et surconsommation BigQuery à partir du 11 septembre.</p>
-        <p>Aucune donnée d’entreprise réelle, aucun compte cloud connecté. Les affectations et décisions restent dans la session de cet onglet ; fermer l’onglet ou réinitialiser la démo les efface.</p>
-        <h3>Règles de calcul</h3>
+        <h2 id="scope-title">${t('demo.scope')}</h2>
+        <p>${t('demo.scopeP1', { count: focusRows.length.toLocaleString(locale()) })}</p>
+        <p>${pick({
+          fr: 'Un générateur déterministe produit les mêmes lignes à chaque ouverture : variation quotidienne, activité réduite le week-end, croissance du stockage de Nova Intelligence et surconsommation BigQuery à partir du 11 septembre.',
+          en: 'A deterministic generator produces the same rows each time it opens: daily variation, reduced weekend activity, storage growth at Nova Intelligence and BigQuery overconsumption from September 11.',
+        })}</p>
+        <p>${pick({
+          fr: 'Aucune donnée d’entreprise réelle, aucun compte cloud connecté. Les affectations et décisions restent dans la session de cet onglet ; fermer l’onglet ou réinitialiser la démo les efface.',
+          en: 'No real company data, no connected cloud account. Assignments and decisions stay in this tab’s session; closing the tab or resetting the demo erases them.',
+        })}</p>
+        <h3>${t('demo.calcRules')}</h3>
         <dl class="rules">
-          ${rules.map(([name, text]) => `<div><dt>${name}</dt><dd>${text}</dd></div>`).join('')}
+        ${rules.map(([name, text]) => `<div><dt>${name}</dt><dd>${text}</dd></div>`).join('')}
         </dl>
       </section>
 
       <section class="prose" aria-labelledby="real-title">
-        <h2 id="real-title">Brancher un export réel</h2>
+        <h2 id="real-title">${t('demo.connectRealExport')}</h2>
         <ol class="pipeline">
-          ${pipeline.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
+        ${pipeline.map(([title, text]) => `<li><strong>${title}</strong> ${text}</li>`).join('')}
         </ol>
-        <p>Les tests automatiques vérifient les règles de coût FOCUS de la démo et exécutent chaque requête de la bibliothèque. Ce prototype ne contient ni connecteur actif, ni moteur de facturation, ni automatisation de ressources.</p>
-        <h3>Références</h3>
+        <p>${pick({
+          fr: 'Les tests automatiques vérifient les règles de coût FOCUS de la démo et exécutent chaque requête de la bibliothèque. Ce prototype ne contient ni connecteur actif, ni moteur de facturation, ni automatisation de ressources.',
+          en: 'Automated tests check the demo’s FOCUS cost rules and run every query in the library. This prototype includes no live connector, no billing engine and no resource automation.',
+        })}</p>
+        <h3>${t('demo.references')}</h3>
         <ul class="references">
-          ${references.map(([href, title, text]) => `<li><a class="link" href="${href}" target="_blank" rel="noopener noreferrer">${title}</a><span>${text}</span></li>`).join('')}
+        ${references.map(([href, title, text]) => `<li><a class="link" href="${href}" target="_blank" rel="noopener noreferrer">${title}</a><span>${text}</span></li>`).join('')}
         </ul>
       </section>
     </div>`;
@@ -639,69 +688,69 @@ function showProject(id) {
   const cost = sum(input, (r) => r.cost);
   const owner = ownerOf(id);
 
-  openSheet(sheetHead(esc(p.name), `${p.id}, ${p.region}`) + `
-    <div class="sheet-figure">
-      <p class="figure-value">${money(cost)}</p>
-      <p class="figure-note">Coût effectif ${MONTHS[state.month].range}</p>
-    </div>
-    <dl class="facts">
-      <div><dt>Équipe</dt><dd>${owner ? esc(teamLabel(owner)) : statusText('critical', 'À attribuer')}</dd></div>
-      <div><dt>Environnement</dt><dd>${p.env}</dd></div>
-      <div><dt>Budget mensuel</dt><dd>${money(p.budget * 100)}</dd></div>
-      <div><dt>Budget consommé</dt><dd>${pct(cost / (p.budget * 100) * 100)}</dd></div>
-    </dl>
-    <h3>Par service</h3>
-    ${serviceBars(input)}
-    <p class="sheet-foot">Nom et montants fictifs, sans lien avec une organisation réelle.</p>`);
+  openSheet(sheetHead(esc(projectLabel(p.id)), `${p.id}, ${p.region}`) + `
+<div class="sheet-figure">
+<p class="figure-value">${money(cost)}</p>
+<p class="figure-note">${t('demo.effectiveCostFor', { period: pick(MONTHS[state.month].range) })}</p>
+</div>
+<dl class="facts">
+<div><dt>${t('demo.team')}</dt><dd>${owner ? esc(teamLabel(owner)) : statusText('critical', t('demo.toAssign'))}</dd></div>
+<div><dt>${t('demo.colEnv')}</dt><dd>${envLabel(p.env)}</dd></div>
+<div><dt>${t('demo.monthlyBudget')}</dt><dd>${money(p.budget * 100)}</dd></div>
+<div><dt>${t('demo.colBudgetUsed')}</dt><dd>${pct(cost / (p.budget * 100) * 100)}</dd></div>
+</dl>
+<h3>${t('demo.byService')}</h3>
+${serviceBars(input)}
+<p class="sheet-foot">${t('demo.fictionalNote')}</p>`);
 }
 
 function showRecommendation(id) {
   const r = recommendations.find((x) => x.id === id);
   const status = statusOf(id);
   const actions = {
-    candidate: [['approved', 'Valider la piste', true], ['rejected', 'Écarter la piste']],
-    approved: [['implemented', 'Marquer comme déployée', true], ['rejected', 'Écarter la piste']],
-    implemented: [['candidate', 'Remettre à qualifier']],
-    rejected: [['candidate', 'Remettre à qualifier']],
+    candidate: [['approved', t('demo.approveLead'), true], ['rejected', t('demo.dropLead')]],
+    approved: [['implemented', t('demo.markDeployed'), true], ['rejected', t('demo.dropLead')]],
+    implemented: [['candidate', t('demo.sendBackToQualify')]],
+    rejected: [['candidate', t('demo.sendBackToQualify')]],
   }[status];
 
-  openSheet(sheetHead(esc(r.title), `${r.service}, ${r.project}`) + `
-    <dl class="facts facts-four">
-      <div><dt>Statut</dt><dd>${STATUS[status]}</dd></div>
-      <div><dt>Risque</dt><dd>${r.risk}</dd></div>
-      <div><dt>Effort</dt><dd>${r.effort}</dd></div>
-      <div><dt>Responsable</dt><dd>${r.owner}</dd></div>
-    </dl>
-    <div class="sheet-figure">
-      <p class="figure-value">${money(r.saving)}<span class="unit"> par mois</span></p>
-      <p class="figure-note">Gain estimé, non constaté</p>
-      <p class="formula">${r.formula}</p>
-    </div>
-    <h3>Constat</h3>
-    <p>${r.evidence}</p>
-    <h3>Action proposée</h3>
-    <p>${r.action}</p>
-    ${r.before ? `
-    <details class="sql">
-      <summary>Exemple SQL avant et après</summary>
-      <p class="code-caption">Avant : relit tout l’historique</p>
-      <pre><code>${esc(r.before)}</code></pre>
-      <p class="code-caption">Après : lit une seule partition</p>
-      <pre><code>${esc(r.after)}</code></pre>
-      <p>Exemple fictif. @processing_date doit être défini et la table partitionnée sur event_date. Les rattrapages nécessitent une fenêtre adaptée.</p>
-    </details>` : ''}
-    <h3>Garde-fous</h3>
-    <p>${r.guardrail}</p>
-    <h3>Mesure après déploiement</h3>
-    <p>${r.validation}</p>
-    <form id="decision-form" class="decision">
-      <label for="decision-note">Motif de la décision</label>
-      <textarea id="decision-note" rows="3" maxlength="500" placeholder="Ex. Valider en recette avant de modifier la production."></textarea>
-      <p class="form-help">Obligatoire pour tracer la décision. Rien n’est modifié dans Google Cloud.</p>
-      <div class="decision-actions">
-        ${actions.map(([value, label, primary]) => `<button type="submit" class="btn ${primary ? 'btn-primary' : ''}" value="${value}">${label}</button>`).join('')}
-      </div>
-    </form>`);
+  openSheet(sheetHead(esc(pick(r.title)), `${r.service}, ${r.project}`) + `
+<dl class="facts facts-four">
+<div><dt>${t('demo.status')}</dt><dd>${pick(STATUS[status])}</dd></div>
+<div><dt>${t('demo.colRisk')}</dt><dd>${pick(r.risk)}</dd></div>
+<div><dt>${t('demo.colEffort')}</dt><dd>${pick(r.effort)}</dd></div>
+<div><dt>${t('demo.owner')}</dt><dd>${pick(r.owner)}</dd></div>
+</dl>
+<div class="sheet-figure">
+<p class="figure-value">${money(r.saving)}<span class="unit"> ${t('demo.perMonth')}</span></p>
+<p class="figure-note">${t('demo.estimatedNotRealized')}</p>
+<p class="formula">${pick(r.formula)}</p>
+</div>
+<h3>${t('demo.finding')}</h3>
+<p>${pick(r.evidence)}</p>
+<h3>${t('demo.proposedAction')}</h3>
+<p>${pick(r.action)}</p>
+${r.before ? `
+<details class="sql">
+<summary>${t('demo.sqlExample')}</summary>
+<p class="code-caption">${t('demo.sqlBefore')}</p>
+<pre><code>${esc(r.before)}</code></pre>
+<p class="code-caption">${t('demo.sqlAfter')}</p>
+<pre><code>${esc(r.after)}</code></pre>
+<p>${t('demo.sqlNote')}</p>
+</details>` : ''}
+<h3>${t('demo.guardrails')}</h3>
+<p>${pick(r.guardrail)}</p>
+<h3>${t('demo.measureAfterDeploy')}</h3>
+<p>${pick(r.validation)}</p>
+<form id="decision-form" class="decision">
+<label for="decision-note">${t('demo.decisionReason')}</label>
+<textarea id="decision-note" rows="3" maxlength="500" placeholder="${t('demo.reasonPlaceholder')}"></textarea>
+<p class="form-help">${t('demo.reasonRequired')}</p>
+<div class="decision-actions">
+${actions.map(([value, label, primary]) => `<button type="submit" class="btn ${primary ? 'btn-primary' : ''}" value="${value}">${label}</button>`).join('')}
+</div>
+</form>`);
 
   const note = $('#decision-note');
   note.addEventListener('input', () => note.setCustomValidity(''));
@@ -709,7 +758,7 @@ function showRecommendation(id) {
     e.preventDefault();
     const text = note.value.trim();
     if (!text) {
-      note.setCustomValidity('Ajoutez un motif pour tracer cette décision.');
+      note.setCustomValidity(t('demo.reasonMissing'));
       note.reportValidity();
       return;
     }
@@ -719,7 +768,7 @@ function showRecommendation(id) {
     persist();
     $('#detail').close();
     rerender();
-    toast(`${DECISION_DONE[next]}. Décision enregistrée dans cet onglet.`);
+    toast(t('demo.decisionSaved', { done: pick(DECISION_DONE[next]) }));
   });
 }
 
@@ -727,14 +776,14 @@ function showRecommendation(id) {
 function exportFocus() {
   const input = focusRows.filter((r) => r.month === state.month && inTeam(r.SubAccountId));
   download(`stratus-focus-${MONTHS[state.month].key}.csv`, toFocusCsv(input));
-  toast(`${input.length} lignes FOCUS 1.2 exportées. Le fichier se recharge dans le Labo SQL.`);
+  toast(t('demo.focusExported', { count: input.length }));
 }
 
 function exportAllocation(chargeback = false) {
   const input = rows.filter((r) => r.month === state.month);
   const a = allocation(input, state.owners, state.method);
   if (chargeback && a.unallocated) {
-    toast('Attribuez les coûts restants avant de préparer le chargeback.');
+    toast(t('demo.assignFirst'));
     return;
   }
   const period = MONTHS[state.month].key;
@@ -748,20 +797,20 @@ function exportAllocation(chargeback = false) {
     lines.push([period, 'Showback', 'Non attribué', (a.unallocated / 100).toFixed(2), '0.00', (a.unallocated / 100).toFixed(2), state.method, 'NON_ATTRIBUE']);
   }
   download(`stratus-${chargeback ? 'chargeback-brouillon' : 'showback'}-2026-${state.month}.csv`, [header, ...lines].map((l) => l.join(',')).join('\r\n'));
-  toast(`${chargeback ? 'Brouillon de chargeback' : 'Showback'} exporté, total ${money(a.total, 2)}.`);
+  toast(t('demo.allocExported', { kind: chargeback ? t('demo.chargebackDraft') : 'Showback', total: money(a.total, 2) }));
 }
 
 function exportDecisions() {
-  const payload = state.decisions.map((d) => ({ ...d, title: recommendations.find((r) => r.id === d.id).title, simulation: true }));
+  const payload = state.decisions.map((d) => ({ ...d, title: pick(recommendations.find((r) => r.id === d.id).title), simulation: true }));
   download('stratus-decisions.json', JSON.stringify(payload, null, 2), 'application/json');
-  toast('Journal des décisions exporté.');
+  toast(t('demo.decisionLogExported'));
 }
 
 function resetDemo() {
   Object.assign(state, DEFAULTS, { owners: {}, statuses: {}, decisions: [] });
   persist();
   rerender();
-  toast('La démo a été réinitialisée.');
+  toast(t('demo.demoReset'));
 }
 
 const SCENARIOS = {
@@ -770,19 +819,20 @@ const SCENARIOS = {
   none: { commit: 0 },
 };
 
+// Libellés bilingues {fr, en} (affichés avec pick()) ; les identifiants servent au routage.
 export const DEMO_VIEWS = [
-  ['overview', 'Vue d’ensemble', overview],
-  ['optimise', 'Optimisations', optimise],
-  ['allocation', 'Allocation', allocationView],
-  ['simulate', 'Simulateur CUD', simulate],
-  ['method', 'Méthode', method],
+  ['overview', { fr: 'Vue d’ensemble', en: 'Overview' }, overview],
+  ['optimise', { fr: 'Optimisations', en: 'Optimizations' }, optimise],
+  ['allocation', { fr: 'Allocation', en: 'Allocation' }, allocationView],
+  ['simulate', { fr: 'Simulateur CUD', en: 'CUD simulator' }, simulate],
+  ['method', { fr: 'Méthode', en: 'Method' }, method],
 ];
 
 export function renderDemo() {
   const view = DEMO_VIEWS.find(([id]) => id === state.view) || DEMO_VIEWS[0];
   return `
-    <nav class="subnav" aria-label="Vues de la démonstration">
-      ${DEMO_VIEWS.map(([id, label]) => `<a class="subnav-link" href="#demo/${id}" data-nav="demo/${id}" ${view[0] === id ? 'aria-current="page"' : ''}>${label}</a>`).join('')}
+    <nav class="subnav" aria-label="${t('demo.viewsAria')}">
+    ${DEMO_VIEWS.map(([id, label]) => `<a class="subnav-link" href="#demo/${id}" data-nav="demo/${id}" ${view[0] === id ? 'aria-current="page"' : ''}>${pick(label)}</a>`).join('')}
     </nav>
     ${view[2]()}`;
 }
@@ -819,7 +869,7 @@ export function handleDemoClick(target) {
       state.owners['sandbox-experiments'] = $('#assign-owner').value;
       persist();
       rerender();
-      toast(`Sandbox R&D est attribué à ${state.owners['sandbox-experiments']}. La répartition a été recalculée.`);
+      toast(t('demo.assigned', { team: teamLabel(state.owners['sandbox-experiments']) }));
       return true;
     default:
       return false;

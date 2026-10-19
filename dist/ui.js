@@ -1,18 +1,25 @@
 // Formatage et primitives d'interface partagés par toutes les vues.
 
 import { FOCUS_COLUMNS } from './focus.js';
+import { t, lang, locale } from './i18n.js';
 
 export const $ = (selector, root = document) => root.querySelector(selector);
 
-export const money = (cents, digits = 0) => new Intl.NumberFormat('fr-FR', {
+// Formats selon la langue : « 80 844 € » ou « €80,844 », « 17,8 % » ou « 17.8% ».
+export const money = (cents, digits = 0) => new Intl.NumberFormat(locale(), {
   style: 'currency', currency: 'EUR', minimumFractionDigits: digits, maximumFractionDigits: digits,
 }).format(cents / 100);
 
-const decimal = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
-export const pct = (n) => `${decimal.format(n)} %`;
+const decimal = (n) => new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 }).format(n);
+export const pct = (n) => (lang() === 'en' ? `${decimal(n)}%` : `${decimal(n)} %`);
 export const signedPct = (n) => `${n > 0 ? '+' : ''}${pct(n)}`;
-export const kEuros = (cents) => cents ? `${decimal.format(cents / 100000)} k€` : '0';
-export const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+export const kEuros = (cents) => {
+  if (!cents) return '0';
+  const thousands = decimal(cents / 100000);
+  return lang() === 'en' ? `€${thousands}k` : `${thousands} k€`;
+};
+// Accord simple : « 1 jour », « 3 jours » ; en français, 0 prend le singulier.
+export const plural = (n, one, many) => `${n} ${(lang() === 'en' ? n === 1 : n <= 1) ? one : many}`;
 
 export const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -58,7 +65,7 @@ export function pageHead(title, lede, actions = '', capabilities = []) {
       <div>
         <h1>${title}</h1>
         <p class="lede">${lede}</p>
-        ${capabilities.length ? `<p class="capabilities">Capacités FinOps : ${capabilities.map(capabilityLink).join(', ')}</p>` : ''}
+        ${capabilities.length ? `<p class="capabilities">${t('ui.capabilities')} ${capabilities.map(capabilityLink).join(', ')}</p>` : ''}
       </div>
       ${actions ? `<div class="page-actions">${actions}</div>` : ''}
     </div>`;
@@ -94,7 +101,7 @@ export const statusText = (tone, text) => `<span class="status status-${tone}">$
 export const meter = (ratio) => `
   <span class="meter ${ratio > 100 ? 'is-over' : ''}">
     <span class="meter-track" aria-hidden="true"><span class="meter-fill" style="width:${Math.min(100, ratio).toFixed(1)}%"></span></span>
-    <span class="meter-value">${Math.round(ratio)} %</span>
+    <span class="meter-value">${pct(Math.round(ratio))}</span>
   </span>`;
 
 let toastTimer;
@@ -107,7 +114,7 @@ export function toast(message) {
 }
 
 export function download(name, text, type = 'text/csv;charset=utf-8') {
-  const blob = new Blob(type.startsWith('text/csv') ? ['\ufeff', text] : [text], { type });
+  const blob = new Blob(type.startsWith('text/csv') ? ['﻿', text] : [text], { type });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
   link.download = name;
@@ -137,5 +144,5 @@ export const sheetHead = (title, subtitle) => `
       <h2 id="detail-title">${title}</h2>
       <p class="sheet-sub">${subtitle}</p>
     </div>
-    <button class="close" data-close aria-label="Fermer">${icon('close')}</button>
+    <button class="close" data-close aria-label="${t('ui.close')}">${icon('close')}</button>
   </div>`;

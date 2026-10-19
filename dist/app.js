@@ -1,17 +1,18 @@
-// Point d'entrée : navigation par ancre (#section/détail), en-tête et délégation des clics.
+// Point d'entrée : navigation par ancre (#section/détail), langue FR/EN, en-tête et délégation des clics.
 
 import { state, restore, setRenderer } from './state.js';
 import { $, logo } from './ui.js';
+import { t, lang, setLang, LANGS } from './i18n.js';
 import { DEMO_VIEWS, renderDemo, bindDemo, handleDemoClick, showRecommendation } from './views/demo.js';
 import { renderSituations, bindSituations } from './views/situations.js';
 import { renderLab, bindLab, handleLabClick, requestRun } from './views/lab.js';
 import { renderReference, bindReference, handleReferenceClick } from './views/reference.js';
 
 const SECTIONS = {
-  demo: { label: 'Démonstration', render: renderDemo, bind: bindDemo },
-  situations: { label: 'Situations', render: renderSituations, bind: bindSituations },
-  lab: { label: 'Labo SQL', render: renderLab, bind: bindLab },
-  reference: { label: 'Référentiel', render: renderReference, bind: bindReference },
+  demo: { label: 'app.nav.demo', render: renderDemo, bind: bindDemo },
+  situations: { label: 'app.nav.situations', render: renderSituations, bind: bindSituations },
+  lab: { label: 'app.nav.lab', render: renderLab, bind: bindLab },
+  reference: { label: 'app.nav.reference', render: renderReference, bind: bindReference },
 };
 
 // Anciennes ancres de la première version (#overview, #allocation…).
@@ -28,20 +29,26 @@ function parseRoute(hash) {
 const routeOf = () => (state.section === 'demo' ? `demo/${state.view}` : `${state.section}${state.detail ? `/${state.detail}` : ''}`);
 
 function renderShell() {
+  document.title = t('app.title');
+  document.querySelector('meta[name="description"]').content = t('app.description');
+  document.querySelector('.skip-link').textContent = t('app.skip');
   $('#app').innerHTML = `
     <header class="topbar">
       <div class="topbar-inner">
         <a class="wordmark" href="#demo/overview" data-nav="demo/overview">${logo()}Stratus</a>
-        <nav class="tabs" aria-label="Sections">
-          ${Object.entries(SECTIONS).map(([id, s]) => `<a class="tab" href="#${id === 'demo' ? 'demo/overview' : id}" data-nav="${id === 'demo' ? `demo/${state.view}` : id}" ${state.section === id ? 'aria-current="page"' : ''}>${s.label}</a>`).join('')}
+        <nav class="tabs" aria-label="${t('app.nav.label')}">
+          ${Object.entries(SECTIONS).map(([id, s]) => `<a class="tab" href="#${id === 'demo' ? 'demo/overview' : id}" data-nav="${id === 'demo' ? `demo/${state.view}` : id}" ${state.section === id ? 'aria-current="page"' : ''}>${t(s.label)}</a>`).join('')}
         </nav>
-        <p class="demo-flag">FOCUS 1.2, données synthétiques</p>
+        <p class="demo-flag">${t('app.flag')}</p>
+        <div class="lang-switch" role="group" aria-label="${t('app.lang.label')}">
+          ${LANGS.map((code) => `<button type="button" class="lang-button" data-lang="${code}" aria-pressed="${code === lang()}" lang="${code}">${t(`app.lang.${code}`)}</button>`).join('')}
+        </div>
       </div>
     </header>
     <main id="main" tabindex="-1"></main>
     <footer class="site-foot">
-      <p>Stratus, boîte à outils FinOps conçue par Julien Esnault.</p>
-      <p>Aucun compte cloud connecté. Les décisions et favoris restent dans ce navigateur.</p>
+      <p>${t('app.footer.1')}</p>
+      <p>${t('app.footer.2')}</p>
     </footer>`;
   renderView();
 }
@@ -64,6 +71,14 @@ function renderView() {
 
 setRenderer(renderView);
 
+// Changer de langue reconstruit la coque ; la vue courante reste ouverte, la fiche latérale se ferme.
+function switchLang(code) {
+  if (!setLang(code)) return;
+  $('#detail').close();
+  renderShell();
+  document.querySelector(`[data-lang="${code}"]`)?.focus({ preventScroll: true });
+}
+
 function navigate(route, { push = true } = {}) {
   const next = parseRoute(route);
   if (!next) return;
@@ -79,12 +94,16 @@ function navigate(route, { push = true } = {}) {
 }
 
 document.addEventListener('click', (e) => {
-  const target = e.target.closest('[data-nav], [data-guide], [data-project], [data-rec], [data-close], [data-action], [data-scenario], [data-lab], [data-dialect], [data-anatomy]');
+  const target = e.target.closest('[data-nav], [data-guide], [data-project], [data-rec], [data-close], [data-action], [data-scenario], [data-lab], [data-dialect], [data-anatomy], [data-lang]');
   if (!target) return;
-  const { nav, guide } = target.dataset;
+  const { nav, guide, lang: language } = target.dataset;
 
   if ('close' in target.dataset) {
     $('#detail').close();
+    return;
+  }
+  if (language) {
+    switchLang(language);
     return;
   }
   if (handleReferenceClick(target) || handleLabClick(target)) return;
@@ -112,4 +131,5 @@ window.addEventListener('hashchange', onHistory);
 
 restore();
 Object.assign(state, parseRoute(location.hash) || {});
+document.documentElement.lang = lang();
 renderShell();

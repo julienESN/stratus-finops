@@ -1,6 +1,7 @@
 // Graphiques SVG : lignes avec réticule au survol et navigation au clavier, barres horizontales.
 
-import { $, esc, money } from './ui.js';
+import { $, esc, money, pct } from './ui.js';
+import { t } from './i18n.js';
 import { sum } from './data.js';
 
 const charts = new Map();
@@ -46,7 +47,7 @@ export function lineChart(cfg) {
         ${cfg.series.map((s) => `<li><span class="key key-line key-${s.key}"></span>${esc(s.label)}</li>`).join('')}
       </ul>
       <div class="chart-plot">
-        <svg viewBox="0 0 ${W} ${H}" role="img" tabindex="0" aria-label="${esc(cfg.label)}. Flèches gauche et droite pour lire les valeurs.">
+        <svg viewBox="0 0 ${W} ${H}" role="img" tabindex="0" aria-label="${esc(cfg.label)}. ${t('ui.chart.keys')}">
           ${grid}${xLabels}${annotations}
           ${cfg.series.slice().reverse().map((s) => `<path class="series series-${s.key}" d="${path(s.values)}"/>`).join('')}
           ${dots}
@@ -134,7 +135,7 @@ export function serviceBars(input) {
   const byService = {};
   input.forEach((r) => { byService[r.service] = (byService[r.service] || 0) + r.cost; });
   const list = Object.entries(byService).sort((a, b) => b[1] - a[1]);
-  if (!list.length) return '<p class="empty">Aucune dépense sur cette période.</p>';
+  if (!list.length) return `<p class="empty">${t('ui.noSpend')}</p>`;
   const total = sum(list, ([, v]) => v);
   const max = list[0][1];
   return `
@@ -143,7 +144,7 @@ export function serviceBars(input) {
         <li>
           <span class="bar-name">${esc(name)}</span>
           <span class="bar-value">${money(v)}</span>
-          <span class="bar-share">${Math.round(v / total * 100)} %</span>
+          <span class="bar-share">${pct(Math.round(v / total * 100))}</span>
           <span class="bar-track" aria-hidden="true"><span class="bar-fill" style="width:${(v / max * 100).toFixed(2)}%"></span></span>
         </li>`).join('')}
     </ol>`;

@@ -1,0 +1,36 @@
+// Chaînes de la coque (en-tête, navigation, pied de page, titre de la page).
+
+export const STRINGS = {
+  fr: {
+    'app.title': 'Stratus FinOps',
+    'app.description': 'Boîte à outils FinOps alignée sur FOCUS et le framework FinOps : démonstration, situations terrain, requêtes SQL exécutables et référentiel. Julien Esnault, données synthétiques.',
+    'app.skip': 'Aller au contenu',
+    'app.nav.label': 'Sections',
+    'app.nav.demo': 'Démonstration',
+    'app.nav.situations': 'Situations',
+    'app.nav.lab': 'Labo SQL',
+    'app.nav.reference': 'Référentiel',
+    'app.flag': 'FOCUS 1.2, données synthétiques',
+    'app.footer.1': 'Stratus, boîte à outils FinOps conçue par Julien Esnault.',
+    'app.footer.2': 'Aucun compte cloud connecté. Les décisions et favoris restent dans ce navigateur.',
+    'app.lang.label': 'Langue',
+    'app.lang.fr': 'FR',
+    'app.lang.en': 'EN',
+  },
+  en: {
+    'app.title': 'Stratus FinOps',
+    'app.description': 'FinOps toolbox aligned with FOCUS and the FinOps Framework: demo, real-world situations, executable SQL queries and reference. Julien Esnault, synthetic data.',
+    'app.skip': 'Skip to content',
+    'app.nav.label': 'Sections',
+    'app.nav.demo': 'Demo',
+    'app.nav.situations': 'Situations',
+    'app.nav.lab': 'SQL lab',
+    'app.nav.reference': 'Reference',
+    'app.flag': 'FOCUS 1.2, synthetic data',
+    'app.footer.1': 'Stratus, a FinOps toolbox designed by Julien Esnault.',
+    'app.footer.2': 'No cloud account connected. Decisions and favorites stay in this browser.',
+    'app.lang.label': 'Language',
+    'app.lang.fr': 'FR',
+    'app.lang.en': 'EN',
+  },
+};

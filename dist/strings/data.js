@@ -1,0 +1,41 @@
+// Libellés affichés pour les valeurs de données (équipes, environnements, projets).
+// Les valeurs d'origine restent en français dans dist/data.js : elles servent aux tags, aux requêtes et au CSV.
+
+export const STRINGS = {
+  fr: {
+    'team.Data & IA': 'Data & IA',
+    'team.Services numériques': 'Services numériques',
+    'team.Infrastructure': 'Infrastructure',
+    'team.Innovation': 'Innovation',
+    'team.Partagé': 'Socle partagé',
+    'env.Production': 'Production',
+    'env.Préproduction': 'Préproduction',
+    'env.Développement': 'Développement',
+    'project.atlas-analytics-prod': 'Atlas Analytics',
+    'project.orion-platform-prod': 'Orion Platform',
+    'project.nova-ml-prod': 'Nova Intelligence',
+    'project.helios-api-prod': 'Helios Services',
+    'project.core-network-shared': 'Socle partagé',
+    'project.orion-staging': 'Orion Préproduction',
+    'project.lab-innovation-dev': 'Innovation Lab',
+    'project.sandbox-experiments': 'Sandbox R&D',
+  },
+  en: {
+    'team.Data & IA': 'Data & AI',
+    'team.Services numériques': 'Digital services',
+    'team.Infrastructure': 'Infrastructure',
+    'team.Innovation': 'Innovation',
+    'team.Partagé': 'Shared platform',
+    'env.Production': 'Production',
+    'env.Préproduction': 'Staging',
+    'env.Développement': 'Development',
+    'project.atlas-analytics-prod': 'Atlas Analytics',
+    'project.orion-platform-prod': 'Orion Platform',
+    'project.nova-ml-prod': 'Nova Intelligence',
+    'project.helios-api-prod': 'Helios Services',
+    'project.core-network-shared': 'Shared platform',
+    'project.orion-staging': 'Orion Staging',
+    'project.lab-innovation-dev': 'Innovation Lab',
+    'project.sandbox-experiments': 'Sandbox R&D',
+  },
+};

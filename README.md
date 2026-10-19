@@ -3,6 +3,7 @@
 Démonstrateur et boîte à outils de consultant de Julien Esnault, alignés sur FOCUS et sur le framework FinOps 2026. Toutes les données sont synthétiques. Aucune donnée d’entreprise, clé cloud ou connexion n’est embarquée.
 
 Version en ligne : https://julienesn.github.io/stratus-finops/
+Version anglaise : https://julienesn.github.io/stratus-finops/?lang=en (ou le sélecteur FR/EN de l’en-tête, retenu dans le navigateur). Les requêtes SQL et les situations sont identiques dans les deux langues.
 
 ## Quatre sections
 
