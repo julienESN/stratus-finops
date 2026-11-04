@@ -11,6 +11,7 @@ import * as data from '../dist/data.js';
 import * as snippets from '../dist/content/snippets.js';
 import * as situations from '../dist/content/situations.js';
 import * as reference from '../dist/content/reference.js';
+import * as veille from '../dist/content/veille.js';
 
 const ROOT = fileURLToPath(new URL('../dist/', import.meta.url));
 
@@ -88,9 +89,9 @@ function checkBilingual(value, path, problems) {
   for (const [key, item] of Object.entries(value)) checkBilingual(item, `${path}.${key}`, problems);
 }
 
-test('les contenus (snippets, situations, référentiel, recommandations) sont complets dans les deux langues', () => {
+test('les contenus (snippets, situations, référentiel, recommandations, veille) sont complets dans les deux langues', () => {
   const problems = [];
-  for (const [name, ns] of Object.entries({ data, snippets, situations, reference })) {
+  for (const [name, ns] of Object.entries({ data, snippets, situations, reference, veille })) {
     for (const [exported, value] of Object.entries(ns)) checkBilingual(value, `${name}.${exported}`, problems);
   }
   assert.deepEqual(problems, []);

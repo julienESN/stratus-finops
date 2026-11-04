@@ -7,12 +7,14 @@ import { DEMO_VIEWS, renderDemo, bindDemo, handleDemoClick, showRecommendation }
 import { renderSituations, bindSituations } from './views/situations.js';
 import { renderLab, bindLab, handleLabClick, requestRun } from './views/lab.js';
 import { renderReference, bindReference, handleReferenceClick } from './views/reference.js';
+import { renderVeille, bindVeille } from './views/veille.js';
 
 const SECTIONS = {
   demo: { label: 'app.nav.demo', render: renderDemo, bind: bindDemo },
   situations: { label: 'app.nav.situations', render: renderSituations, bind: bindSituations },
   lab: { label: 'app.nav.lab', render: renderLab, bind: bindLab },
   reference: { label: 'app.nav.reference', render: renderReference, bind: bindReference },
+  veille: { label: 'app.nav.veille', render: renderVeille, bind: bindVeille },
 };
 
 // Anciennes ancres de la première version (#overview, #allocation…).

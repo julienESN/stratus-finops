@@ -5,13 +5,14 @@ import { toFocusCsv } from '../focus.js';
 import {
   state, DEFAULTS, MONTHS, STATUS, DECISION_DONE, persist, rerender,
   projectById, projectLabel, ownerOf, inTeam, teamLabel, envLabel, statusOf, periodRows, teamRecommendations, totals,
+  projectForecasts, commitmentUse,
 } from '../state.js';
 import {
   $, money, pct, signedPct, kEuros, plural, esc, icon, pageHead, selectField, filterBar,
-  term, operator, statusText, meter, toast, download, openSheet, sheetHead,
+  term, operator, statusText, meter, toast, download, openSheet, sheetHead, signedMoney, copyText,
 } from '../ui.js';
 import { lineChart, bindCharts, serviceBars } from '../charts.js';
-import { t, pick, locale } from '../i18n.js';
+import { t, pick, locale, lang } from '../i18n.js';
 
 const periodField = () => selectField('period', t('demo.period'), [[9, pick(MONTHS[9].label)], [8, pick(MONTHS[8].label)]], state.month);
 
@@ -195,6 +196,194 @@ function projectTable(input) {
         </table>
       </div>
     </section>`;
+}
+
+/* ---------- Note de pilotage ---------- */
+
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+// Faits de la note, calculés une fois et partagés par la page et la version texte copiée.
+function briefFacts() {
+  const input = periodRows();
+  const figures = totals(input);
+  const partial = state.month === 9;
+  const gap = figures.forecast - figures.budget;
+  const forecasts = projectForecasts(input).sort((a, b) => b.variance - a.variance);
+  const open = teamRecommendations().filter((r) => statusOf(r.id) !== 'rejected').sort((a, b) => b.saving - a.saving);
+  const unowned = projects
+    .filter((p) => !ownerOf(p.id))
+    .map((p) => ({ id: p.id, cost: sum(input.filter((r) => r.project === p.id), (r) => r.cost) }))
+    .filter((p) => p.cost);
+  const unallocated = sum(unowned, (p) => p.cost);
+
+  // Message clé : la situation du mois, puis le premier contributeur à un dépassement.
+  const month = capitalize(pick(MONTHS[state.month].name));
+  const vars = { Month: month, forecast: money(figures.forecast), share: pct(figures.budget ? figures.forecast / figures.budget * 100 : 0), amount: money(Math.abs(gap)) };
+  const messageKey = partial
+    ? (gap > 0 ? 'demo.briefMsgOver' : 'demo.briefMsgUnder')
+    : (gap > 0 ? 'demo.briefMsgClosedOver' : 'demo.briefMsgClosedUnder');
+  const message = [t(messageKey, vars)];
+  const top = forecasts[0];
+  if (gap > 0 && top && top.variance > 0) {
+    const cause = partial && top.id === 'atlas-analytics-prod' ? t('demo.briefMsgDrift') : '';
+    message.push(t(top.variance >= gap ? 'demo.briefMsgDriverAll' : 'demo.briefMsgDriver', {
+      project: projectLabel(top.id), amount: money(top.variance), cause,
+    }));
+  }
+
+  return {
+    input, figures, partial, gap, forecasts, open, unowned, unallocated, message,
+    saving: sum(open, (r) => r.saving),
+    allocatedShare: figures.total ? (1 - unallocated / figures.total) * 100 : 100,
+    cud: commitmentUse(),
+  };
+}
+
+function briefKpis(f) {
+  const ratio = f.figures.budget ? f.figures.forecast / f.figures.budget * 100 : 0;
+  const budgetNote = f.gap > 0
+    ? statusText('critical', t(f.partial ? 'demo.overrunForecast' : 'demo.overrun', { amount: money(f.gap) }))
+    : statusText('good', t(f.partial ? 'demo.marginForecast' : 'demo.margin', { amount: money(-f.gap) }));
+  const figure = (label, value, note) => `
+    <div class="figure">
+      <dt>${label}</dt>
+      <dd class="figure-value">${value}</dd>
+      <dd class="figure-note">${note}</dd>
+    </div>`;
+  return `
+    <section class="brief-kpis" aria-labelledby="brief-kpis-title">
+      <h2 id="brief-kpis-title" class="sr-only">${t('demo.briefKpis')}</h2>
+      <dl class="figures">
+        ${figure(t(f.partial ? 'demo.briefKpiForecast' : 'demo.briefKpiActual'), pct(ratio), budgetNote)}
+        ${figure(t('demo.briefKpiAllocated'), pct(f.allocatedShare), f.unallocated ? t('demo.briefKpiAllocatedNote', { amount: money(f.unallocated) }) : t('demo.briefKpiAllAllocated'))}
+        ${figure(t('demo.briefKpiCud'), pct(f.cud.rate), t('demo.briefKpiCudNote', { amount: money(f.cud.unused) }))}
+        ${figure(t('demo.briefKpiPotential'), `${money(f.saving)}<span class="unit"> ${t('demo.perMonth')}</span>`, plural(f.open.length, t('demo.leadOpenOne'), t('demo.leadOpenMany')))}
+      </dl>
+    </section>`;
+}
+
+function briefVariance(f) {
+  const max = Math.max(1, ...f.forecasts.map((p) => Math.abs(p.variance)));
+  return `
+    <section class="section" aria-labelledby="variance-title">
+      <div class="section-head">
+        <div>
+          <h2 id="variance-title">${t('demo.briefVariance')}</h2>
+          <p class="section-note">${t(f.partial ? 'demo.briefVarianceNote' : 'demo.briefVarianceClosed')}</p>
+        </div>
+      </div>
+      <div class="variance">
+        <p class="variance-axis" aria-hidden="true"><span></span><span class="variance-axis-labels"><span>${t('demo.briefUnder')}</span><span>${t('demo.briefOver')}</span></span><span></span></p>
+        <ul class="variance-list">
+          ${f.forecasts.map((p) => `
+            <li class="${p.variance > 0 ? 'is-over' : 'is-under'}">
+              <span class="variance-name"><button class="row-link" data-project="${p.id}">${esc(projectLabel(p.id))}</button></span>
+              <span class="variance-bar" aria-hidden="true"><span class="variance-fill" style="width:${(Math.abs(p.variance) / max * 50).toFixed(2)}%"></span></span>
+              <span class="variance-value">${signedMoney(p.variance)}</span>
+            </li>`).join('')}
+        </ul>
+        <p class="variance-total"><span>${t('demo.briefVarianceTotal')}</span><span>${signedMoney(f.gap)}</span></p>
+      </div>
+    </section>`;
+}
+
+function briefDecisions(f) {
+  const pending = f.open.filter((r) => statusOf(r.id) !== 'implemented');
+  const items = [
+    ...pending.map((r) => `
+      <li>
+        <div class="ask-main">
+          <button class="row-link" data-rec="${r.id}">${esc(pick(r.title))}</button>
+          <span class="cell-sub">${esc(projectLabel(r.project))}, ${esc(pick(r.owner))}, ${t('demo.briefEffortRisk', { effort: pick(r.effort), risk: pick(r.risk).toLowerCase() })}</span>
+        </div>
+        <span class="ask-status">${pick(STATUS[statusOf(r.id)])}</span>
+        <span class="ask-value">${money(r.saving)}<span class="unit"> ${t('demo.perMonth')}</span></span>
+      </li>`),
+    ...f.unowned.map((p) => `
+      <li>
+        <div class="ask-main">
+          <a class="row-link" href="#demo/allocation" data-nav="demo/allocation">${t('demo.briefAssign', { project: esc(projectLabel(p.id)) })}</a>
+          <span class="cell-sub">${t('demo.briefAssignNote', { amount: money(p.cost) })}</span>
+        </div>
+        <span class="ask-status">${statusText('critical', t('demo.toAssign'))}</span>
+        <span class="ask-value"></span>
+      </li>`),
+  ];
+  const coverage = f.saving
+    ? (f.gap > 0
+      ? t(f.partial ? 'demo.briefCoverage' : 'demo.briefCoverageClosed', { amount: `<strong>${money(f.saving)}</strong>`, share: `<strong>${pct(Math.round(f.saving / f.gap * 100))}</strong>` })
+      : t('demo.briefCoverageMargin', { amount: `<strong>${money(f.saving)}</strong>` }))
+    : '';
+
+  return `
+    <section class="section" aria-labelledby="asks-title">
+      <div class="section-head">
+        <div>
+          <h2 id="asks-title">${t('demo.briefDecisions')}</h2>
+          <p class="section-note">${t('demo.briefDecisionsNote')}</p>
+        </div>
+      </div>
+      ${items.length ? `<ol class="asks">${items.join('')}</ol>` : `<p class="empty">${t('demo.briefNoDecision')}</p>`}
+      ${coverage ? `<p class="asks-coverage">${coverage}</p>` : ''}
+    </section>`;
+}
+
+function brief() {
+  const f = briefFacts();
+  return pageHead(
+    t('demo.brief'),
+    t('demo.briefLede'),
+    `<button class="btn" data-action="copy-brief">${icon('copy')}${t('demo.briefCopy')}</button>`,
+    ['Budgeting', 'Forecasting', 'Executive Strategy Alignment'],
+  )
+    + filterBar([periodField(), teamField()], t('demo.dataCutoff', { date: pick(MONTHS[state.month].cutoff) }))
+    + `
+    <section class="brief-message" aria-labelledby="brief-message-title">
+      <h2 id="brief-message-title" class="brief-label">${t('demo.briefMessageLabel')}</h2>
+      <p>${f.message.map(esc).join(' ')}</p>
+    </section>`
+    + briefKpis(f)
+    + briefVariance(f)
+    + briefDecisions(f);
+}
+
+// Version texte de la note, à coller dans un e-mail ou un compte rendu.
+function briefText() {
+  const f = briefFacts();
+  const colon = lang() === 'en' ? ':' : ' :';
+  const strip = (html) => html.replace(/<[^>]+>/g, '');
+  const scope = state.team === 'all' ? t('demo.allTeams') : teamLabel(state.team);
+  const pending = f.open.filter((r) => statusOf(r.id) !== 'implemented');
+  const lines = [
+    `${t('demo.brief')}, ${pick(MONTHS[state.month].label)} (${scope})`,
+    '',
+    f.message.join(' '),
+    '',
+    `${t('demo.briefKpis')}${colon}`,
+    `- ${t(f.partial ? 'demo.briefKpiForecast' : 'demo.briefKpiActual')}${colon} ${pct(f.figures.budget ? f.figures.forecast / f.figures.budget * 100 : 0)}`,
+    `- ${t('demo.briefKpiAllocated')}${colon} ${pct(f.allocatedShare)}`,
+    `- ${t('demo.briefKpiCud')}${colon} ${pct(f.cud.rate)}`,
+    `- ${t('demo.briefKpiPotential')}${colon} ${money(f.saving)} ${t('demo.perMonth')}`,
+    '',
+    `${t('demo.briefVariance')}${colon}`,
+    ...f.forecasts.map((p) => `- ${projectLabel(p.id)}${colon} ${signedMoney(p.variance)}`),
+    `- ${t('demo.briefVarianceTotal')}${colon} ${signedMoney(f.gap)}`,
+    '',
+    `${t('demo.briefDecisions')}${colon}`,
+    ...pending.map((r, i) => `${i + 1}. ${pick(r.title)} (${money(r.saving)} ${t('demo.perMonth')}, ${pick(r.owner)})`),
+    ...f.unowned.map((p, i) => `${pending.length + i + 1}. ${t('demo.briefAssign', { project: projectLabel(p.id) })} (${t('demo.briefAssignNote', { amount: money(p.cost) })})`),
+  ];
+  if (f.saving) {
+    lines.push('', strip(f.gap > 0
+      ? t(f.partial ? 'demo.briefCoverage' : 'demo.briefCoverageClosed', { amount: money(f.saving), share: pct(Math.round(f.saving / f.gap * 100)) })
+      : t('demo.briefCoverageMargin', { amount: money(f.saving) })));
+  }
+  lines.push('', t('demo.briefTextFoot'));
+  return lines.join('\n');
+}
+
+async function copyBrief() {
+  toast(t(await copyText(briefText()) ? 'demo.briefCopied' : 'demo.briefCopyFailed'));
 }
 
 /* ---------- Optimisations ---------- */
@@ -822,6 +1011,7 @@ const SCENARIOS = {
 // Libellés bilingues {fr, en} (affichés avec pick()) ; les identifiants servent au routage.
 export const DEMO_VIEWS = [
   ['overview', { fr: 'Vue d’ensemble', en: 'Overview' }, overview],
+  ['brief', { fr: 'Note de pilotage', en: 'Leadership brief' }, brief],
   ['optimise', { fr: 'Optimisations', en: 'Optimizations' }, optimise],
   ['allocation', { fr: 'Allocation', en: 'Allocation' }, allocationView],
   ['simulate', { fr: 'Simulateur CUD', en: 'CUD simulator' }, simulate],
@@ -864,6 +1054,7 @@ export function handleDemoClick(target) {
     case 'export-allocation': exportAllocation(); return true;
     case 'export-chargeback': exportAllocation(true); return true;
     case 'export-decisions': exportDecisions(); return true;
+    case 'copy-brief': copyBrief(); return true;
     case 'reset': resetDemo(); return true;
     case 'assign':
       state.owners['sandbox-experiments'] = $('#assign-owner').value;

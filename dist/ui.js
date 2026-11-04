@@ -50,6 +50,8 @@ const ICONS = {
   upload: '<path d="M12 15V4.5M7.5 9 12 4.5 16.5 9M5 15.5v3h14v-3"/>',
   download: '<path d="M12 4.5V15M7.5 10.5 12 15l4.5-4.5M5 15.5v3h14v-3"/>',
   search: '<circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  external: '<path d="M14 5h5v5M19 5l-8 8M17 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4.5"/>',
 };
 
 export const icon = (name) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
@@ -96,7 +98,16 @@ export const term = (label, value, note, modifier = '') => `
 
 export const operator = (symbol, spoken) => `<span class="operator"><span aria-hidden="true">${symbol}</span><span class="sr-only">${spoken}</span></span>`;
 
-export const statusText = (tone, text) => `<span class="status status-${tone}">${icon(tone === 'good' ? 'check' : 'alert')}${text}</span>`;
+const STATUS_ICONS = { good: 'check', pending: 'clock' };
+export const statusText = (tone, text) => `<span class="status status-${tone}">${icon(STATUS_ICONS[tone] || 'alert')}${text}</span>`;
+
+// Date ISO (AAAA-MM-JJ) en toutes lettres : « 24 octobre 2026 » ou « October 24, 2026 ».
+export const longDate = (iso) => new Intl.DateTimeFormat(locale(), {
+  day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
+}).format(new Date(`${iso}T00:00:00Z`));
+
+// Montant signé : « +26 503 € », « −3 300 € » (signe moins typographique).
+export const signedMoney = (cents) => `${cents > 0 ? '+' : cents < 0 ? '−' : ''}${money(Math.abs(cents))}`;
 
 export const meter = (ratio) => `
   <span class="meter ${ratio > 100 ? 'is-over' : ''}">
