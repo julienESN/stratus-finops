@@ -1,6 +1,6 @@
 // État de l'application, persistance de session et données dérivées de la démo.
 
-import { projects, rows, recommendations, teams, sum } from './data.js';
+import { projects, rows, focusRows, recommendations, teams, sum } from './data.js';
 import { dataLabel } from './i18n.js';
 
 // Libellés bilingues {fr, en} : utiliser pick() pour les afficher.
@@ -101,4 +101,41 @@ export function totals(input) {
   const budget = sum(projects.filter((p) => inTeam(p.id)), (p) => p.budget) * 100;
   const previous = sum(rows.filter((r) => r.month === 8 && r.day <= 15 && inTeam(r.project)), (r) => r.cost);
   return { total, forecast, budget, delta: previous ? (total / previous - 1) * 100 : 0 };
+}
+
+// Projection de fin de mois par projet, pour la note de pilotage. Même règle que totals() :
+// réalisé + moyenne des 7 derniers jours × 15 jours restants (septembre), réalisé seul (mois clôturé).
+// Le reste à courir global est réparti aux plus forts restes, pour que la somme retombe au centime sur totals().forecast.
+export function projectForecasts(input) {
+  const { days } = MONTHS[state.month];
+  const partial = state.month === 9;
+  const list = projects.filter((p) => inTeam(p.id)).map((p) => {
+    const own = input.filter((r) => r.project === p.id);
+    return {
+      id: p.id,
+      budget: p.budget * 100,
+      actual: sum(own, (r) => r.cost),
+      lastWeek: sum(own.filter((r) => r.day > days - 7), (r) => r.cost),
+    };
+  });
+  const remaining = list.map(() => 0);
+  if (partial) {
+    const raw = list.map((p) => p.lastWeek / 7 * 15);
+    raw.forEach((v, i) => { remaining[i] = Math.floor(v); });
+    const rest = Math.round(sum(list, (p) => p.lastWeek) / 7 * 15) - sum(remaining);
+    const order = raw.map((v, i) => ({ i, f: v - Math.floor(v) })).sort((a, b) => b.f - a.f);
+    for (let n = 0; n < rest; n++) remaining[order[n % order.length].i]++;
+  }
+  return list.map((p, i) => {
+    const forecast = p.actual + remaining[i];
+    return { id: p.id, budget: p.budget, actual: p.actual, forecast, variance: forecast - p.budget };
+  });
+}
+
+// Utilisation de l'engagement flexible (CUD) de l'organisation sur le mois : part des frais réellement consommée.
+export function commitmentUse() {
+  const list = focusRows.filter((r) => r.month === state.month);
+  const fees = sum(list.filter((r) => r.ChargeCategory === 'Purchase'), (r) => r.BilledCost);
+  const unused = sum(list.filter((r) => r.CommitmentDiscountStatus === 'Unused'), (r) => r.EffectiveCost);
+  return { fees, unused, rate: fees ? (1 - unused / fees) * 100 : 100 };
 }

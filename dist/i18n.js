@@ -8,12 +8,13 @@ import { STRINGS as DEMO } from './strings/demo.js';
 import { STRINGS as SITUATIONS } from './strings/situations.js';
 import { STRINGS as LAB } from './strings/lab.js';
 import { STRINGS as REFERENCE } from './strings/reference.js';
+import { STRINGS as VEILLE } from './strings/veille.js';
 
 export const LANGS = ['fr', 'en'];
 export const DEFAULT_LANG = 'fr';
 const STORAGE_KEY = 'stratus-lang';
 
-const TABLES = [APP, UI, DATA, DEMO, SITUATIONS, LAB, REFERENCE];
+const TABLES = [APP, UI, DATA, DEMO, SITUATIONS, LAB, REFERENCE, VEILLE];
 export const MESSAGES = Object.fromEntries(LANGS.map((code) => [code, Object.assign({}, ...TABLES.map((table) => table[code]))]));
 
 const asLang = (value) => (LANGS.includes(value) ? value : null);
